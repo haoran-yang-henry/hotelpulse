@@ -1,0 +1,205 @@
+# Website & Booking Funnel dashboard - see revenue.yaml for the format.
+
+name: Website & Booking Funnel
+description: >-
+  How guests move through the direct booking flow, where they drop off, which channels bring
+  bookings - and how much of the traffic the tracker can actually see.
+
+parameters:
+  - id: period
+    name: Period
+    slug: period
+    type: date/all-options
+    sectionId: date
+    default: past12weeks
+  - id: device
+    name: Device
+    slug: device
+    type: string/=
+    sectionId: string
+  - id: channel
+    name: Traffic channel
+    slug: channel
+    type: string/=
+    sectionId: string
+
+sections:
+  - heading: Direct booking funnel
+    position: [0, 0, 24, 1]
+    cards:
+      - name: Tracked visits
+        sql: web/sessions.sql
+        display: scalar
+        position: [1, 0, 6, 3]
+        description: Visits of people who accepted analytics cookies (bots excluded).
+        filters:
+          period: marts.web_funnel_daily.session_date
+          device: marts.web_funnel_daily.device_type
+          channel: marts.web_funnel_daily.channel_group
+
+      - name: Conversion rate
+        sql: web/conversion_rate.sql
+        display: scalar
+        position: [1, 6, 6, 3]
+        description: Share of tracked visits that ended with a booking.
+        filters:
+          period: marts.web_funnel_daily.session_date
+          device: marts.web_funnel_daily.device_type
+          channel: marts.web_funnel_daily.channel_group
+        columns:
+          conversion_rate: {number_style: percent, decimals: 2}
+
+      - name: Payment success rate
+        sql: web/payment_success_rate.sql
+        display: scalar
+        position: [1, 12, 6, 3]
+        description: Share of visits with a payment attempt that ended with a booking.
+        filters:
+          period: marts.web_funnel_daily.session_date
+          device: marts.web_funnel_daily.device_type
+          channel: marts.web_funnel_daily.channel_group
+        columns:
+          payment_success_rate: {number_style: percent, decimals: 1}
+
+      - name: Tracking coverage
+        sql: web/tracking_coverage.sql
+        display: scalar
+        position: [1, 18, 6, 3]
+        description: Share of the PMS's website bookings that the tracker saw (consent, ad blockers).
+        filters:
+          period: marts.tracking_coverage_daily.booked_date
+        columns:
+          tracking_coverage: {number_style: percent, decimals: 1}
+
+      - name: Booking funnel
+        sql: web/booking_funnel.sql
+        display: funnel
+        position: [4, 0, 12, 7]
+        description: Visits reaching each step of the booking flow (closed funnel).
+        filters:
+          period: marts.web_funnel_daily.session_date
+          device: marts.web_funnel_daily.device_type
+          channel: marts.web_funnel_daily.channel_group
+        visualization:
+          funnel.dimension: step
+          funnel.metric: visits
+
+      - name: Payment success rate by device
+        sql: web/payment_success_by_device.sql
+        display: line
+        position: [4, 12, 12, 7]
+        description: >-
+          Weekly share of payment attempts that succeed, per device. A drop on one device type
+          points to a broken checkout rather than to demand.
+        filters:
+          period: marts.web_funnel_daily.session_date
+          device: marts.web_funnel_daily.device_type
+          channel: marts.web_funnel_daily.channel_group
+        visualization:
+          graph.dimensions: [week, device_type]
+          graph.metrics: [payment_success_rate]
+          graph.x_axis.title_text: Visit week
+          graph.y_axis.title_text: Payment success rate
+        columns:
+          payment_success_rate: {number_style: percent, decimals: 0}
+
+      - name: Failed payments by error code
+        sql: web/payment_errors_weekly.sql
+        display: bar
+        position: [11, 0, 12, 6]
+        description: Failed payment attempts per week, split by the error the payment provider returned.
+        filters:
+          period: marts.web_payment_errors_daily.session_date
+          device: marts.web_payment_errors_daily.device_type
+        visualization:
+          graph.dimensions: [week, error_code]
+          graph.metrics: [failures]
+          stackable.stack_type: stacked
+          graph.x_axis.title_text: Visit week
+          graph.y_axis.title_text: Failed attempts
+
+      - name: Conversion rate by traffic channel
+        sql: web/conversion_by_channel.sql
+        display: row
+        position: [11, 12, 12, 6]
+        description: Share of tracked visits that booked, per traffic channel.
+        filters:
+          period: marts.web_funnel_daily.session_date
+          device: marts.web_funnel_daily.device_type
+          channel: marts.web_funnel_daily.channel_group
+        visualization:
+          graph.dimensions: [channel_group]
+          graph.metrics: [conversion_rate]
+          graph.x_axis.title_text: ""
+          graph.y_axis.title_text: Conversion rate
+          graph.show_values: true
+        columns:
+          conversion_rate: {number_style: percent, decimals: 1}
+
+  - heading: Marketing attribution
+    position: [17, 0, 24, 1]
+    cards:
+      - name: Visits by traffic channel
+        sql: web/sessions_by_channel_weekly.sql
+        display: bar
+        position: [18, 0, 12, 6]
+        description: Tracked visits per week and traffic channel.
+        filters:
+          period: marts.web_funnel_daily.session_date
+          device: marts.web_funnel_daily.device_type
+          channel: marts.web_funnel_daily.channel_group
+        visualization:
+          graph.dimensions: [week, channel_group]
+          graph.metrics: [sessions]
+          stackable.stack_type: stacked
+          graph.x_axis.title_text: Visit week
+          graph.y_axis.title_text: Visits
+
+      - name: Bookings by channel - first vs. last touch
+        sql: web/attribution_first_vs_last.sql
+        display: bar
+        position: [18, 12, 12, 6]
+        description: >-
+          Website bookings credited to the channel of the guest's first visit vs. the visit in
+          which they booked (30-day window). Last-touch reporting undervalues channels that
+          start the journey, such as metasearch.
+        filters:
+          period: marts.web_attribution.booked_date
+        visualization:
+          graph.dimensions: [channel, attribution_model]
+          graph.metrics: [bookings]
+          graph.x_axis.title_text: ""
+          graph.y_axis.title_text: Bookings
+
+  - heading: Can we trust these numbers?
+    position: [24, 0, 24, 1]
+    texts:
+      - position: [25, 0, 8, 6]
+        text: |
+          **Web analytics only sees visitors who accept analytics cookies.**
+
+          Visitors who reject cookies or block the tracker are invisible, so visit and booking
+          counts here are *lower bounds*. Rates (conversion, payment success) stay meaningful
+          as long as coverage is stable.
+
+          Revenue always comes from the PMS - see *Revenue & Distribution*.
+    cards:
+      - name: Tracking coverage by week
+        sql: web/tracking_coverage_weekly.sql
+        display: line
+        position: [25, 8, 16, 6]
+        description: Share of the PMS's website bookings that the tracker saw. Below 60 % triggers a data-quality warning.
+        filters:
+          period: marts.tracking_coverage_daily.booked_date
+        visualization:
+          graph.dimensions: [week]
+          graph.metrics: [tracking_coverage]
+          graph.x_axis.title_text: Booking week
+          graph.y_axis.title_text: Bookings seen by the tracker
+          graph.show_goal: true
+          graph.goal_value: 0.6
+          graph.goal_label: Alert threshold
+          series_settings:
+            tracking_coverage: {title: Tracking coverage}
+        columns:
+          tracking_coverage: {number_style: percent, decimals: 0}

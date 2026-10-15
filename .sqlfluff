@@ -12,6 +12,8 @@ params = {"full_refresh": false}
 # Metabase field-filter placeholders in bi/metabase/cards render to a boolean condition
 hotel = TRUE
 period = TRUE
+device = TRUE
+channel = TRUE
 
 [sqlfluff:indentation]
 indented_joins = false
