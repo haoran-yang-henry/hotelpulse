@@ -95,12 +95,12 @@ def pms_ingest():
         parameters={"salt": "{{ var.value.pii_hash_secret }}"},
     )
     stage_reservations = sql_task("stage_reservations", "staging/pms_reservations.sql")
-    dq_staging = data_quality.override(task_id="dq_staging")("staging")
+    dq_staging = data_quality.override(task_id="dq_staging")("pms/staging")
 
     build_dimensions = sql_task("build_dimensions", "core/dimensions.sql")
     build_fct_reservation = sql_task("build_fct_reservation", "core/fct_reservation.sql")
     build_fct_room_night = sql_task("build_fct_room_night", "core/fct_room_night.sql")
-    dq_core = data_quality.override(task_id="dq_core", outlets=[FCT_ROOM_NIGHT])("core")
+    dq_core = data_quality.override(task_id="dq_core", outlets=[FCT_ROOM_NIGHT])("pms/core")
 
     chain(
         extracted,
