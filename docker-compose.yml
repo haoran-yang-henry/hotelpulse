@@ -20,6 +20,8 @@ x-project-image: &project-image
 x-project-env: &project-env
   HOTELPULSE_DWH_DSN: postgresql://dwh_etl:${DWH_ETL_PASSWORD}@postgres:5432/dwh
   HOTELPULSE_PMS_ADMIN_DSN: postgresql://pms_admin:${PMS_ADMIN_PASSWORD}@postgres:5432/pms
+  HOTELPULSE_LANDING_DIR: /opt/hotelpulse/data/landing
+  HOTELPULSE_COLLECTOR_URL: http://collector:8000
   SIM_ANCHOR_DATE: ${SIM_ANCHOR_DATE:-}
 
 x-airflow-env: &airflow-env
@@ -180,6 +182,47 @@ services:
       postgres:
         condition: service_healthy
     mem_limit: 1536m
+    restart: unless-stopped
+
+  # Website tracking: event collector (also serves tracker.js) -> landing zone files
+  collector:
+    <<: *project-image
+    entrypoint: ["python", "-m", "uvicorn", "--factory", "hotelpulse.tracking.collector:create_app",
+                 "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
+    environment:
+      HOTELPULSE_LANDING_DIR: /opt/hotelpulse/data/landing
+      COLLECTOR_ALLOWED_ORIGINS: http://localhost:${WEB_PORT:-8030}
+    ports:
+      - "${COLLECTOR_PORT:-8010}:8000"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "-s", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    mem_limit: 256m
+    restart: unless-stopped
+
+  # Demo hotel website with booking engine (writes into the simulated PMS)
+  web:
+    <<: *project-image
+    entrypoint: ["python", "-m", "uvicorn", "--factory", "hotelpulse.website.app:create_app",
+                 "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      HOTELPULSE_PMS_ADMIN_DSN: postgresql://pms_admin:${PMS_ADMIN_PASSWORD}@postgres:5432/pms
+      COLLECTOR_PUBLIC_URL: http://localhost:${COLLECTOR_PORT:-8010}
+    ports:
+      - "${WEB_PORT:-8030}:8000"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "-s", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+      collector:
+        condition: service_healthy
+    mem_limit: 256m
     restart: unless-stopped
 
   # One-shot: dashboards as code - set up Metabase and (re)create questions and dashboards.

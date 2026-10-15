@@ -41,15 +41,18 @@ def extraction_window(
     lookback: timedelta,
     full_refresh: bool,
     target_is_empty: bool,
+    now: datetime,
 ) -> Window:
     """Window of `updated_at` values to extract for one run.
 
-    Incremental runs re-read a look-back period before the data interval so that rows
-    committed late in the source are not missed; duplicates are harmless because staging
-    merges on the natural key. An empty target or an explicit full refresh loads everything.
+    Incremental runs read the data interval plus a look-back period, so rows committed late
+    in the source are not missed; duplicates are harmless because staging merges on the
+    natural key. A full load (empty target or explicit refresh) reads everything up to *now*:
+    the source keeps only the current version of a row, so a row last changed after the
+    interval end would otherwise be missing - not just stale - until the next run.
     """
     if full_refresh or target_is_empty:
-        return Window(None, interval_end)
+        return Window(None, now)
     return Window(interval_start - lookback, interval_end)
 
 

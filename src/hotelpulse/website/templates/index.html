@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero">
+  <div class="hero-text">
+    <h1>Stay by the river. Wake up by the sea.</h1>
+    <p>Two hotels, one booking - best rate guaranteed when you book direct.</p>
+  </div>
+  <form class="search card" action="/rooms" method="get">
+    {% if error %}<p class="alert">{{ error }}</p>{% endif %}
+    <label>Hotel
+      <select name="hotel" required>
+        {% for h in hotels %}<option value="{{ h.code }}">{{ h.name }}</option>{% endfor %}
+      </select>
+    </label>
+    <div class="row">
+      <label>Check-in <input type="date" name="checkin" value="{{ checkin.isoformat() }}" required></label>
+      <label>Check-out <input type="date" name="checkout" value="{{ checkout.isoformat() }}" required></label>
+    </div>
+    <div class="row">
+      <label>Adults <input type="number" name="adults" value="2" min="1" max="4"></label>
+      <label>Children <input type="number" name="children" value="0" min="0" max="3"></label>
+    </div>
+    <button class="btn wide" type="submit">Check availability</button>
+  </form>
+</section>
+
+<section class="hotels">
+  {% for h in hotels %}
+  <article class="card hotel">
+    <div class="hotel-image {{ h.code | lower }}"></div>
+    <h2>{{ h.name }}</h2>
+    <p class="muted">{{ h.city }}, Portugal · {{ h.total_rooms }} rooms</p>
+    <p>{{ copy[h.code] }}</p>
+  </article>
+  {% endfor %}
+</section>
+{% endblock %}

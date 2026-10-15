@@ -25,6 +25,14 @@ def pms_admin_dsn() -> str:
     return require_env("HOTELPULSE_PMS_ADMIN_DSN")
 
 
+def landing_dir() -> Path:
+    return Path(os.environ.get("HOTELPULSE_LANDING_DIR", DATA_DIR / "landing"))
+
+
+def collector_url() -> str:
+    return os.environ.get("HOTELPULSE_COLLECTOR_URL", "http://localhost:8010")
+
+
 def sim_anchor_date() -> date | None:
     """Date the dataset's "today" is aligned to; None means "use today"."""
     value = os.environ.get("SIM_ANCHOR_DATE", "").strip()

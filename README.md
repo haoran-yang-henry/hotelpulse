@@ -39,15 +39,20 @@ lets every chart **explain itself** in plain language.
 | Revenue analytics | Occupancy, ADR, RevPAR, channel mix and commission cost, booking pace (on-the-books vs. same time last year) | ✅ |
 | Dashboards as code | Metabase questions and dashboards defined in YAML + SQL and provisioned through the Metabase API | ✅ |
 | Privacy by design | Personal data stops at staging (salted hashes); BI uses a read-only role limited to modelled schemas | ✅ |
-| Website tracking | Demo booking site, JavaScript tracker, event collector, sessionisation, booking funnel, attribution and reconciliation against the PMS | 🚧 |
+| Website tracking | Demo booking site with a consent-first JavaScript tracker, an event collector that validates against a versioned contract and writes a gzip JSONL landing zone, exactly-once file ingestion, clock-skew correction, bot and duplicate filtering, per-visitor incremental sessionisation | ✅ |
+| Web analytics | Closed booking funnel by device and channel, payment errors, first- vs. last-touch attribution, and tracking coverage reconciled against the PMS | ✅ |
 | Operations & reviews | Consumables forecasting and purchase suggestions; review ingestion with topic and sentiment tagging | 🚧 |
 | **Explain this chart** | A button next to every chart: computes facts (deltas, anomalies, drivers), turns them into a narrative with an LLM and verifies every number against the facts | 🚧 |
 
-## Dashboard
+## Dashboards
 
 ![Revenue & Distribution dashboard](docs/images/revenue-dashboard.png)
 
 *Revenue & Distribution: KPIs, year-over-year trends, channel mix, direct booking intake and the booking pace for the next four months. The dip in direct bookings at the end of September is an injected anomaly (a mobile payment outage pushing guests to OTAs).*
+
+![Website & Booking Funnel dashboard](docs/images/website-dashboard.png)
+
+*Website & Booking Funnel: the same outage seen from the website - mobile payment success collapses and `gateway_timeout` errors spike. Tracking coverage fell below the alert threshold after a cookie-banner redesign (a second injected anomaly), and first- vs. last-touch attribution shows how last-click reporting undervalues metasearch.*
 
 ## Architecture
 
@@ -55,15 +60,18 @@ lets every chart **explain itself** in plain language.
 flowchart LR
     subgraph sources["Source systems (simulated)"]
         PMS[("PMS<br/>PostgreSQL")]
+        WEB["Hotel website<br/>booking engine + tracker.js"]
+        COL["Event collector<br/>FastAPI"]
+        LZ[("Landing zone<br/>gzip JSONL")]
         INV["Inventory<br/>CSV exports"]
         REV["Reviews<br/>API"]
-        WEB["Hotel website<br/>+ tracker.js"]
     end
 
     subgraph airflow["Apache Airflow 3"]
-        SIM["sim_pms_source<br/>hourly"]
+        SIM["sim_pms_source / sim_web_traffic"]
         ING["pms_ingest<br/>daily after night audit"]
-        MART["marts_build<br/>asset-triggered"]
+        WING["web_events_ingest<br/>hourly, file manifest"]
+        MART["marts_build / web_marts_build<br/>asset-triggered"]
     end
 
     subgraph dwh["PostgreSQL warehouse"]
@@ -74,20 +82,25 @@ flowchart LR
     MB["Metabase<br/>dashboards as code"]
     EXP["Insight service<br/>explain this chart"]
 
-    SIM -. reveals events .-> PMS
+    SIM -. simulated activity .-> PMS
+    SIM -. simulated visits .-> COL
+    WEB -- bookings --> PMS
+    WEB -- events --> COL --> LZ
     PMS --> ING --> RAW
+    LZ --> WING --> RAW
     INV -.-> RAW
     REV -.-> RAW
-    WEB -. events .-> RAW
     CORE --> MART --> MARTS
     ING --> AUDIT
+    WING --> AUDIT
     MARTS --> MB
     CORE --> MB
     MB -- "✨ Explain" --> EXP
 ```
 
 All services run with Docker Compose: PostgreSQL 17 (warehouse, source system and application
-databases with least-privilege roles), Airflow 3.3 (LocalExecutor) and Metabase 0.64.
+databases with least-privilege roles), Airflow 3.3 (LocalExecutor), Metabase 0.64, and two small
+FastAPI services - the demo hotel website and the event collector.
 
 ## Data pipeline workflow
 
@@ -103,24 +116,40 @@ databases with least-privilege roles), Airflow 3.3 (LocalExecutor) and Metabase 
    the reservations that changed in the batch (`fct_reservation`, `fct_room_night`).
 5. **Serve** — finishing `pms_ingest` updates the `core.fct_room_night` asset, which triggers
    `marts_build` to rebuild the marts in a single transaction.
-6. **Verify** — data-quality checks run after every layer; results are stored in `audit` and
-   shown on a data-health dashboard.
+6. **Verify** — data-quality checks run after every layer; results are stored in
+   `audit.dq_results`.
+
+**Website events** follow a second, file-based path:
+
+1. **Collect** — the tracker posts batches to the collector, which validates each event against
+   the [tracking plan](docs/tracking-plan.md), stamps the server time and writes immutable,
+   hourly-partitioned landing files (invalid events go to a dead-letter dataset).
+2. **Load** — `web_events_ingest` loads every file not yet in `audit.loaded_files`, one
+   transaction per file together with its manifest entry: exactly once, late files included.
+3. **Stage** — deduplicate by `event_id`, correct device clocks
+   (`collector_ts - (sent_at - event_ts)`), classify devices and bots, parse UTM parameters.
+4. **Sessionise** — all sessions of every visitor seen in the batch are rebuilt (30-minute
+   inactivity rule), then the web marts join sessions with PMS reservations for attribution and
+   tracking coverage.
 
 | DAG | Schedule | Purpose |
 |---|---|---|
 | `sim_pms_source` | hourly | Advance the simulated PMS to the current time |
 | `pms_ingest` | daily, 03:00 Europe/Lisbon | Extract → raw → staging → core, with quality checks |
 | `marts_build` | on asset `core.fct_room_night` | Rebuild KPI, channel and booking-pace marts |
+| `sim_web_traffic` | every 15 minutes | Send simulated visits, consistent with the PMS, to the collector |
+| `web_events_ingest` | hourly | Landing files → raw → staging → sessions, with quality checks |
+| `web_marts_build` | on `core.fct_web_session` or `core.fct_room_night` | Funnel, payment errors, attribution, tracking coverage |
 
 ## Data model
 
 | Layer | Content | Load strategy |
 |---|---|---|
-| `raw` | Source rows as extracted, plus `_batch_id` and `_extracted_at` | append-only (change log) |
-| `staging` | One current row per entity, cleaned and typed, `dq_issues` flags, no PII | `MERGE` on natural key |
-| `core` | `dim_date`, `dim_hotel`, `dim_room_type`, `dim_channel`, `fct_reservation`, `fct_room_night` | dimensions upserted; facts incremental per changed reservation |
-| `marts` | `hotel_daily_kpi`, `channel_daily`, `channel_bookings_daily`, `booking_pace` | full rebuild in one transaction |
-| `audit` | schema migrations, load log, data-quality results | append-only |
+| `raw` | Source rows as extracted, plus `_batch_id` and `_extracted_at`; tracking events as JSONB with their landing file | append-only (change log), idempotent per batch / file |
+| `staging` | One current row per entity, cleaned and typed, `dq_issues` flags, no PII; unique web events with corrected timestamps | `MERGE` on natural key; first delivery wins |
+| `core` | `dim_date`, `dim_hotel`, `dim_room_type`, `dim_channel`, `fct_reservation`, `fct_room_night`, `fct_web_event`, `fct_web_session` | dimensions upserted; facts incremental per changed reservation / visitor |
+| `marts` | `hotel_daily_kpi`, `channel_daily`, `channel_bookings_daily`, `booking_pace`, `web_funnel_daily`, `web_payment_errors_daily`, `web_attribution`, `tracking_coverage_daily` | full rebuild in one transaction |
+| `audit` | schema migrations, load log, loaded-file manifest, data-quality results | append-only |
 
 KPI definitions follow hotel industry conventions: **Occupancy** = rooms sold / rooms
 available, **ADR** = room revenue / rooms sold, **RevPAR** = room revenue / rooms available,
@@ -140,7 +169,20 @@ make up    # build and start everything; first start seeds data and provisions d
 |---|---|---|
 | Metabase | http://localhost:3001 | `MB_ADMIN_EMAIL` / `MB_ADMIN_PASSWORD` from `.env` |
 | Airflow | http://localhost:8081 | none (local demo mode) |
+| Demo hotel website | http://localhost:8030 | - |
+| Event collector | http://localhost:8010 | - |
 | PostgreSQL | `localhost:5433` | roles and passwords in `.env` |
+
+**Try the whole path yourself:** book a room on the demo website (accept analytics cookies;
+card `4000 0000 0000 0002` is declined, any other number works), then
+
+```bash
+make trigger DAG=pms_ingest          # load the new reservation from the PMS
+make trigger DAG=web_events_ingest   # load your visit; web marts rebuild automatically
+```
+
+and find your booking - with its traffic source and the declined payment - in the
+*Website & Booking Funnel* dashboard.
 
 Useful commands:
 
@@ -158,16 +200,20 @@ make clean       # stop and delete all data volumes
 .
 ├── dags/                    # Airflow DAGs (orchestration only)
 ├── src/hotelpulse/          # Python package
-│   ├── simulator/           #   source-system simulators and injected anomalies
-│   ├── pipelines/           #   extraction helpers used by DAGs
+│   ├── simulator/           #   PMS and website-traffic simulators, injected anomalies
+│   ├── tracking/            #   event contract, collector service, tracker.js
+│   ├── website/             #   demo hotel website and booking engine
+│   ├── pipelines/           #   extraction and file-loading helpers used by DAGs
 │   ├── metabase/            #   dashboards-as-code provisioning
+│   ├── landing.py           #   landing-zone files (swap point for object storage)
 │   ├── migrate.py           #   checksum-verified warehouse migrations
 │   └── quality.py           #   data-quality runner
 ├── warehouse/
 │   ├── migrations/          # V###__*.sql schema migrations
 │   ├── sql/                 # transformations per layer (staging, core, marts)
-│   └── tests/               # data-quality checks per layer
+│   └── tests/               # data-quality checks per domain and layer
 ├── bi/metabase/             # dashboard and question definitions (YAML + SQL)
+├── docs/                    # tracking plan (generated from the contract), images
 ├── infra/                   # Dockerfile and database initialisation
 ├── tests/                   # unit tests and DAG integrity tests
 └── docker-compose.yml

@@ -257,6 +257,30 @@ def dashcards(spec: dict, card_ids: dict[str, int]) -> list[dict]:
             }
         )
         next_id -= 1
+        for text in section.get("texts", []):
+            row, col, width, height = text["position"]
+            result.append(
+                {
+                    "id": next_id,
+                    "card_id": None,
+                    "row": row,
+                    "col": col,
+                    "size_x": width,
+                    "size_y": height,
+                    "parameter_mappings": [],
+                    "visualization_settings": {
+                        "virtual_card": {
+                            "name": None,
+                            "display": "text",
+                            "visualization_settings": {},
+                            "dataset_query": {},
+                            "archived": False,
+                        },
+                        "text": text["text"],
+                    },
+                }
+            )
+            next_id -= 1
         for card in section["cards"]:
             row, col, width, height = card["position"]
             card_id = card_ids[card["name"]]

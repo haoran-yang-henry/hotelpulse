@@ -21,9 +21,9 @@ DEFAULT_ARGS = {
 
 
 @task
-def data_quality(layer: str, run_id: str | None = None) -> dict[str, int]:
-    """Run all checks of a warehouse layer; fail the task on error-level violations."""
+def data_quality(suite: str, run_id: str | None = None) -> dict[str, int]:
+    """Run a data-quality suite (e.g. ``pms/staging``); fail the task on error-level violations."""
     with PostgresHook(postgres_conn_id=DWH_CONN_ID).get_conn() as conn:
-        results = quality.run_layer(conn, layer, run_id or "manual")
+        results = quality.run_suite(conn, suite, run_id or "manual")
     quality.enforce(results)
     return {status: sum(r.status == status for r in results) for status in ("pass", "warn", "fail")}

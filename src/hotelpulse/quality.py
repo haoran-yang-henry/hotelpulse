@@ -1,6 +1,7 @@
 """Data-quality checks as code.
 
-A check is a SQL file under ``warehouse/tests/<layer>/`` that **returns the violating rows**;
+A check is a SQL file under ``warehouse/tests/<domain>/<layer>/`` (a "suite", e.g.
+``pms/staging``) that **returns the violating rows**;
 zero rows means the check passes. A header declares its severity and description::
 
     -- severity: error
@@ -55,7 +56,7 @@ class DataQualityError(RuntimeError):
     pass
 
 
-def parse_check(path: Path, layer: str) -> Check:
+def parse_check(path: Path, suite: str) -> Check:
     text = path.read_text(encoding="utf-8")
     meta: dict[str, str] = {}
     for line in text.splitlines():
@@ -70,12 +71,13 @@ def parse_check(path: Path, layer: str) -> Check:
     if "description" not in meta:
         raise ValueError(f"{path}: header '-- description:' is required")
     query = text.strip().rstrip(";")
-    return Check(f"{layer}.{path.stem}", layer, severity, meta["description"], query)
+    name = f"{suite.replace('/', '.')}.{path.stem}"
+    return Check(name, suite, severity, meta["description"], query)
 
 
-def discover(layer: str, root: Path | None = None) -> list[Check]:
-    directory = (root or settings.WAREHOUSE_DIR / "tests") / layer
-    checks = [parse_check(p, layer) for p in sorted(directory.glob("*.sql"))]
+def discover(suite: str, root: Path | None = None) -> list[Check]:
+    directory = (root or settings.WAREHOUSE_DIR / "tests") / suite
+    checks = [parse_check(p, suite) for p in sorted(directory.glob("*.sql"))]
     if not checks:
         raise FileNotFoundError(f"No data-quality checks found in {directory}")
     return checks
@@ -117,9 +119,9 @@ def record(conn: psycopg.Connection, run_id: str, results: list[Result]) -> None
         )
 
 
-def run_layer(conn: psycopg.Connection, layer: str, run_id: str) -> list[Result]:
-    """Run every check of a layer, persist the results and return them."""
-    results = [execute(conn, check) for check in discover(layer)]
+def run_suite(conn: psycopg.Connection, suite: str, run_id: str) -> list[Result]:
+    """Run every check of a suite (e.g. ``pms/staging``), persist and return the results."""
+    results = [execute(conn, check) for check in discover(suite)]
     record(conn, run_id, results)
     conn.commit()
     for r in results:

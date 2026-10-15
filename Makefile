@@ -21,8 +21,9 @@ up: env ## Build and start the stack; waits for bootstrap and dashboard provisio
 down: ## Stop the stack, keep data
 	$(COMPOSE) down
 
-clean: ## Stop the stack and delete all data volumes
+clean: ## Stop the stack and delete all data (volumes and landing zone; the dataset cache stays)
 	$(COMPOSE) down -v --remove-orphans
+	rm -rf data/landing
 
 ps: ## Show service status
 	$(COMPOSE) ps -a

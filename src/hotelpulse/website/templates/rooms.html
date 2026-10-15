@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Rooms - {{ stay.hotel.name }}{% endblock %}
+{% block content %}
+<section class="summary card">
+  <div>
+    <h1>{{ stay.hotel.name }}</h1>
+    <p class="muted">{{ stay.checkin.strftime('%a %d %b %Y') }} → {{ stay.checkout.strftime('%a %d %b %Y') }}
+      · {{ stay.nights }} night{{ 's' if stay.nights > 1 }} · {{ stay.adults }} adult{{ 's' if stay.adults > 1 }}
+      {% if stay.children %}· {{ stay.children }} child{{ 'ren' if stay.children > 1 }}{% endif %}</p>
+  </div>
+  <a class="btn ghost" href="/">Change search</a>
+</section>
+
+{% if not offers %}
+  <p class="alert">Sorry - we are fully booked for these dates. Try other dates or our other hotel.</p>
+{% else %}
+  {% if rooms_left < 10 %}<p class="notice">Only {{ rooms_left }} rooms left for your dates.</p>{% endif %}
+  <section class="offers">
+    {% for o in offers %}
+    <article class="card offer">
+      <div>
+        <h2>{{ o.name }}</h2>
+        <p class="muted">Free cancellation up to 48 h before arrival</p>
+      </div>
+      <div class="price">
+        <span class="amount">€{{ '%.0f' | format(o.nightly_rate) }}</span><span class="muted"> / night</span>
+        <p class="muted">€{{ '%.2f' | format(o.total) }} total</p>
+        <a class="btn" href="/checkout?{{ params | urlencode }}&room={{ o.code }}"
+           data-track="select_room"
+           data-props='{{ {"hotel_code": stay.hotel.code, "room_type_code": o.code, "room_type_name": o.name, "nightly_rate": o.nightly_rate | float, "currency": "EUR"} | tojson }}'>Select</a>
+      </div>
+    </article>
+    {% endfor %}
+  </section>
+{% endif %}
+{% endblock %}

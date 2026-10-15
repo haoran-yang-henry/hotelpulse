@@ -33,7 +33,7 @@ def marts_build():
         )
         for name in MARTS
     ]
-    dq_marts = data_quality.override(task_id="dq_marts", outlets=[MARTS_REVENUE])("marts")
+    dq_marts = data_quality.override(task_id="dq_marts", outlets=[MARTS_REVENUE])("pms/marts")
     builds >> dq_marts
 
 

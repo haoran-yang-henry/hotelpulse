@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Booking confirmed{% endblock %}
+{% block content %}
+<section class="card confirmation">
+  <p class="badge">Booking confirmed</p>
+  <h1>See you soon at {{ booking.hotel_name }}!</h1>
+  <p>Your confirmation number is <strong class="code">{{ booking.confirmation_code }}</strong>.</p>
+  <dl>
+    <dt>Room</dt><dd>{{ booking.room_type_name }}</dd>
+    <dt>Dates</dt><dd>{{ booking.checkin.strftime('%a %d %b %Y') }} → {{ booking.checkout.strftime('%a %d %b %Y') }}</dd>
+    <dt>Guests</dt><dd>{{ booking.adults }} adult{{ 's' if booking.adults > 1 }}{% if booking.children %}, {{ booking.children }} child{{ 'ren' if booking.children > 1 }}{% endif %}</dd>
+    <dt>Room total</dt><dd>€{{ '%.2f' | format(booking.room_total) }}{% if booking.meal_plan == 'BB' %} + breakfast{% endif %}</dd>
+  </dl>
+  <a class="btn ghost" href="/">Back to home</a>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+  // drop ?new=1 so reloading this page does not record the conversion twice
+  if (location.search.indexOf("new=1") !== -1) history.replaceState(null, "", location.pathname);
+</script>
+{% endblock %}

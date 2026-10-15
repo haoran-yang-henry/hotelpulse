@@ -13,4 +13,17 @@ anomalies:
       pms:
         website_to_ota_share: 0.55
       web:
-        mobile_payment_failure_rate: 0.6
+        # the leaked guests' sessions end in failed mobile payments with this error
+        error_code: gateway_timeout
+        retry_share: 0.4
+
+  - id: A5
+    name: consent_banner_redesign
+    description: >-
+      A redesigned cookie banner makes "Reject" the more prominent button. Fewer visitors
+      accept analytics cookies, so a smaller share of website traffic and bookings is tracked.
+    start_offset_days: -60
+    end_offset_days: 3650  # still live
+    effects:
+      web:
+        consent_rate: 0.55

@@ -7,8 +7,8 @@ from hotelpulse.quality import Check, Result, parse_check
 def test_parse_check_reads_header(tmp_path):
     path = tmp_path / "my_check.sql"
     path.write_text("-- severity: warn\n-- description: Something.\nSELECT 1 WHERE false;\n")
-    check = parse_check(path, "staging")
-    assert check.name == "staging.my_check"
+    check = parse_check(path, "pms/staging")
+    assert check.name == "pms.staging.my_check"
     assert check.severity == "warn"
     assert check.query == "-- severity: warn\n-- description: Something.\nSELECT 1 WHERE false"
 
@@ -23,9 +23,9 @@ def test_parse_check_rejects_bad_header(tmp_path, header):
         parse_check(path, "core")
 
 
-@pytest.mark.parametrize("layer", ["staging", "core", "marts"])
-def test_repository_checks_parse(layer):
-    assert quality.discover(layer)
+@pytest.mark.parametrize("suite", ["pms/staging", "pms/core", "pms/marts"])
+def test_repository_checks_parse(suite):
+    assert quality.discover(suite)
 
 
 def _result(severity, failing):

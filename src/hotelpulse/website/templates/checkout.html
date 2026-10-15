@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Checkout - {{ stay.hotel.name }}{% endblock %}
+{% block content %}
+<section class="checkout">
+  <form id="checkout" class="card" action="/book" method="post">
+    <h1>Guest details</h1>
+    {% if error %}<p class="alert">{{ error }} Please use another card.</p>{% endif %}
+    {% for k, v in params.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+    <div class="row">
+      <label>First name <input name="first_name" required maxlength="80" autocomplete="given-name"></label>
+      <label>Last name <input name="last_name" required maxlength="80" autocomplete="family-name"></label>
+    </div>
+    <label>E-mail <input type="email" name="email" required maxlength="200" autocomplete="email"></label>
+    <label>Country
+      <select name="country">{% for code, name in countries.items() %}<option value="{{ code }}">{{ name }}</option>{% endfor %}</select>
+    </label>
+    <label class="check"><input type="checkbox" id="breakfast" name="breakfast" value="true">
+      Add breakfast (+€{{ '%.2f' | format(breakfast_total) }})</label>
+    <h2>Payment</h2>
+    <label>Card number <input name="card_number" required inputmode="numeric" value="4242 4242 4242 4242"></label>
+    <p class="muted small">Demo: any number books. 4000 0000 0000 0002 is declined.</p>
+    <button class="btn wide" type="submit">Pay €{{ '%.2f' | format(offer.total) }} and book</button>
+  </form>
+
+  <aside class="card recap">
+    <h2>{{ stay.hotel.name }}</h2>
+    <p>{{ offer.name }}</p>
+    <p class="muted">{{ stay.checkin.strftime('%d %b') }} → {{ stay.checkout.strftime('%d %b %Y') }} · {{ stay.nights }} night{{ 's' if stay.nights > 1 }}</p>
+    <p class="total">€{{ '%.2f' | format(offer.total) }}</p>
+  </aside>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+  (function () {
+    var value = {{ offer.total | float }};
+    document.getElementById("breakfast").addEventListener("change", function (e) {
+      if (e.target.checked && window.hp)
+        hp.track("add_extras", { extras: ["breakfast"], value: {{ breakfast_total | float }}, currency: "EUR" });
+    });
+    document.getElementById("checkout").addEventListener("submit", function () {
+      if (window.hp) hp.track("payment_submitted", { payment_method: "card", value: value, currency: "EUR" }, { beacon: true });
+    });
+  })();
+</script>
+{% endblock %}
