@@ -1,0 +1,16 @@
+# Known anomalies injected into the simulated sources. They are the ground truth used to
+# judge whether dashboards and generated chart explanations surface real problems.
+# Offsets are in days relative to the simulation anchor date (the dataset's "today").
+anomalies:
+  - id: A1
+    name: mobile_payment_outage
+    description: >-
+      The website's mobile payment step fails intermittently. Part of the guests who
+      would have booked direct give up and book the same stay through Booking.com.
+    start_offset_days: -24
+    end_offset_days: -10
+    effects:
+      pms:
+        website_to_ota_share: 0.55
+      web:
+        mobile_payment_failure_rate: 0.6
