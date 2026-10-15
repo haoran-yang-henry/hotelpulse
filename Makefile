@@ -14,8 +14,9 @@ setup: ## Install local dev environment and git hooks
 	uv sync
 	uv run pre-commit install
 
-up: env ## Build and start the stack (bootstrap and provisioning run automatically)
+up: env ## Build and start the stack; waits for bootstrap and dashboard provisioning
 	$(COMPOSE) up -d --build --wait --wait-timeout 600
+	@$(COMPOSE) wait metabase-provision >/dev/null && echo "Dashboards provisioned: http://localhost:$${METABASE_PORT:-3001}"
 
 down: ## Stop the stack, keep data
 	$(COMPOSE) down

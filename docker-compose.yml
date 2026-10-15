@@ -1,0 +1,203 @@
+name: hotelpulse
+
+# Shared settings for every container built from the project's Airflow image
+# (Airflow components plus one-shot jobs such as bootstrap and provisioning).
+x-project-image: &project-image
+  build:
+    context: .
+    dockerfile: infra/airflow/Dockerfile
+  image: hotelpulse-airflow:3.3.2
+  user: "${AIRFLOW_UID:-50000}:0"
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./src:/opt/hotelpulse/src
+    - ./warehouse:/opt/hotelpulse/warehouse
+    - ./bi:/opt/hotelpulse/bi
+    - ./data:/opt/hotelpulse/data
+    - ./tests:/opt/hotelpulse/tests
+    - airflow-logs:/opt/airflow/logs
+
+x-project-env: &project-env
+  HOTELPULSE_DWH_DSN: postgresql://dwh_etl:${DWH_ETL_PASSWORD}@postgres:5432/dwh
+  HOTELPULSE_PMS_ADMIN_DSN: postgresql://pms_admin:${PMS_ADMIN_PASSWORD}@postgres:5432/pms
+  SIM_ANCHOR_DATE: ${SIM_ANCHOR_DATE:-}
+
+x-airflow-env: &airflow-env
+  <<: *project-env
+  AIRFLOW__CORE__EXECUTOR: LocalExecutor
+  AIRFLOW__CORE__AUTH_MANAGER: airflow.api_fastapi.auth.managers.simple.simple_auth_manager.SimpleAuthManager
+  # Local demo only: every visitor of the Airflow UI is an admin, no login screen.
+  AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "true"
+  AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD}@postgres:5432/airflow
+  AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+  AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+  AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+  AIRFLOW__CORE__PARALLELISM: "8"
+  AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-apiserver:8080/execution/
+  AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET}
+  AIRFLOW__API__WORKERS: "1"
+  AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+  AIRFLOW__DAG_PROCESSOR__REFRESH_INTERVAL: "30"
+  # Connections & variables (JSON form keeps the connection type explicit)
+  AIRFLOW_CONN_PMS_SOURCE: '{"conn_type": "postgres", "host": "postgres", "port": 5432, "schema": "pms", "login": "pms_reader", "password": "${PMS_READER_PASSWORD}"}'
+  AIRFLOW_CONN_PMS_ADMIN: '{"conn_type": "postgres", "host": "postgres", "port": 5432, "schema": "pms", "login": "pms_admin", "password": "${PMS_ADMIN_PASSWORD}"}'
+  AIRFLOW_CONN_DWH: '{"conn_type": "postgres", "host": "postgres", "port": 5432, "schema": "dwh", "login": "dwh_etl", "password": "${DWH_ETL_PASSWORD}"}'
+  # "secret" in the name makes Airflow mask the value in logs and rendered templates
+  AIRFLOW_VAR_PII_HASH_SECRET: ${PII_HASH_SALT}
+
+x-airflow-common: &airflow-common
+  <<: *project-image
+  environment: *airflow-env
+  restart: unless-stopped
+  depends_on: &airflow-depends-on
+    postgres:
+      condition: service_healthy
+    airflow-init:
+      condition: service_completed_successfully
+    bootstrap:
+      condition: service_completed_successfully
+
+services:
+  postgres:
+    image: postgres:17.11
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      AIRFLOW_DB_PASSWORD: ${AIRFLOW_DB_PASSWORD}
+      METABASE_DB_PASSWORD: ${METABASE_DB_PASSWORD}
+      PMS_ADMIN_PASSWORD: ${PMS_ADMIN_PASSWORD}
+      PMS_READER_PASSWORD: ${PMS_READER_PASSWORD}
+      DWH_ETL_PASSWORD: ${DWH_ETL_PASSWORD}
+      BI_READER_PASSWORD: ${BI_READER_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/initdb:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    healthcheck:
+      # TCP check: the temporary server used during initdb only listens on a unix socket.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres"]
+      interval: 5s
+      retries: 20
+      start_period: 10s
+    mem_limit: 768m
+    restart: unless-stopped
+
+  # One-shot: apply warehouse migrations and seed the simulated PMS (idempotent).
+  bootstrap:
+    <<: *project-image
+    entrypoint: ["python", "-m", "hotelpulse.bootstrap"]
+    environment: *project-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # One-shot: migrate the Airflow metadata DB and prepare the log volume.
+  airflow-init:
+    <<: *project-image
+    environment:
+      <<: *airflow-env
+      _AIRFLOW_DB_MIGRATE: "true"
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        mkdir -p /opt/airflow/logs && chown -R "${AIRFLOW_UID:-50000}:0" /opt/airflow/logs
+        exec /entrypoint airflow version
+    user: "0:0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  airflow-apiserver:
+    <<: *airflow-common
+    command: api-server
+    ports:
+      - "${AIRFLOW_PORT:-8081}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/api/v2/monitor/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    mem_limit: 1g
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type SchedulerJob --hostname "$${HOSTNAME}"']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    mem_limit: 1536m
+
+  airflow-dag-processor:
+    <<: *airflow-common
+    command: dag-processor
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type DagProcessorJob --hostname "$${HOSTNAME}"']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    mem_limit: 768m
+
+  # Ad-hoc commands and DAG integrity tests: `docker compose run --rm airflow-cli ...`
+  airflow-cli:
+    <<: *airflow-common
+    profiles: [cli]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  metabase:
+    image: metabase/metabase:v0.64.2.5
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_HOST: postgres
+      MB_DB_PORT: 5432
+      MB_DB_DBNAME: metabase
+      MB_DB_USER: metabase
+      MB_DB_PASS: ${METABASE_DB_PASSWORD}
+      JAVA_OPTS: -Xmx1g
+      MB_ANON_TRACKING_ENABLED: "false"
+      MB_CHECK_FOR_UPDATES: "false"
+      MB_REPORT_TIMEZONE: Europe/Lisbon
+    ports:
+      - "${METABASE_PORT:-3001}:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail -s http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 90s
+    depends_on:
+      postgres:
+        condition: service_healthy
+    mem_limit: 1536m
+    restart: unless-stopped
+
+  # One-shot: dashboards as code - set up Metabase and (re)create questions and dashboards.
+  metabase-provision:
+    <<: *project-image
+    entrypoint: ["python", "-m", "hotelpulse.metabase.provision"]
+    environment:
+      MB_URL: http://metabase:3000
+      MB_ADMIN_EMAIL: ${MB_ADMIN_EMAIL}
+      MB_ADMIN_PASSWORD: ${MB_ADMIN_PASSWORD}
+      BI_READER_PASSWORD: ${BI_READER_PASSWORD}
+    depends_on:
+      metabase:
+        condition: service_healthy
+      bootstrap:
+        condition: service_completed_successfully
+    restart: "no"
+
+volumes:
+  postgres-data:
+  airflow-logs:
