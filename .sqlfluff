@@ -9,6 +9,9 @@ exclude_rules = AM04, ST06, ST07, RF02, RF04, LT05, CV11, ST05
 run_id = manual__2026-01-01T00:00:00+00:00
 ds = 2026-01-01
 params = {"full_refresh": false}
+# Metabase field-filter placeholders in bi/metabase/cards render to a boolean condition
+hotel = TRUE
+period = TRUE
 
 [sqlfluff:indentation]
 indented_joins = false
