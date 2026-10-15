@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}HotelPulse Hotels{% endblock %}</title>
+  <link rel="stylesheet" href="/static/site.css">
+  <script>window.hpPage = {{ page | tojson }};</script>
+  <script src="{{ collector_url }}/tracker.js" data-endpoint="{{ collector_url }}/collect" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">HotelPulse <span>Hotels</span></a>
+    <nav>
+      <span class="muted">Lisbon · Algarve</span>
+    </nav>
+  </header>
+
+  <main>{% block content %}{% endblock %}</main>
+
+  <footer class="footer">
+    <p>Demo website of the <strong>HotelPulse</strong> data platform. Bookings are written to a
+      simulated PMS; analytics events go to the HotelPulse collector after you consent.</p>
+  </footer>
+
+  <aside id="consent" class="consent" hidden>
+    <p><strong>Analytics cookies</strong> - we use first-party cookies to understand how guests
+      use our booking pages. No data is shared with third parties.</p>
+    <div class="consent-actions">
+      <button type="button" class="btn ghost" data-consent="denied">Reject</button>
+      <button type="button" class="btn" data-consent="granted">Accept</button>
+    </div>
+  </aside>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      var banner = document.getElementById("consent");
+      if (!/(?:^|; )hp_consent=/.test(document.cookie)) banner.hidden = false;
+      banner.addEventListener("click", function (e) {
+        var choice = e.target.dataset.consent;
+        if (!choice) return;
+        if (window.hp) hp.setConsent(choice === "granted");
+        banner.hidden = true;
+      });
+      // declarative click tracking: <a data-track="event" data-props='{...}'>
+      document.addEventListener("click", function (e) {
+        var el = e.target.closest("[data-track]");
+        if (el && window.hp) hp.track(el.dataset.track, JSON.parse(el.dataset.props || "{}"), { beacon: true });
+      });
+    });
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

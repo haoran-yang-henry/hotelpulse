@@ -125,5 +125,9 @@ CREATE TABLE IF NOT EXISTS sim.reservation_plan (
     anomaly_id text
 );
 
+-- Bookings made on the demo website get ids from their own range (see website/engine.py).
+CREATE SEQUENCE IF NOT EXISTS sim.engine_reservation_id_seq START 9000001;
+CREATE SEQUENCE IF NOT EXISTS sim.engine_guest_id_seq START 9000001;
+
 CREATE INDEX IF NOT EXISTS reservation_plan_created_at_idx ON sim.reservation_plan (created_at);
 CREATE INDEX IF NOT EXISTS guest_plan_created_at_idx ON sim.guest_plan (created_at);
