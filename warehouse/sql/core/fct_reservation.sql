@@ -1,0 +1,73 @@
+-- Upsert the reservations that changed in this batch.
+INSERT INTO core.fct_reservation AS f (
+    reservation_id, confirmation_code, hotel_id, guest_key, guest_country, channel_code,
+    market_segment, reserved_room_type, assigned_room_type, booked_date, created_at, arrival_date,
+    departure_date, nights, lead_time_days, guests, meal_plan, adr, booked_revenue, deposit_type,
+    customer_type, is_repeated_guest, status, is_canceled, is_no_show, canceled_at, canceled_date,
+    dq_issues, _batch_id
+)
+SELECT
+    r.reservation_id,
+    r.confirmation_code,
+    r.hotel_id,
+    g.guest_key,
+    g.country_code AS guest_country,
+    coalesce(c.channel_code, 'unknown') AS channel_code,
+    r.market_segment,
+    r.reserved_room_type,
+    r.assigned_room_type,
+    r.booked_date,
+    r.created_at,
+    r.arrival_date,
+    r.departure_date,
+    r.nights,
+    r.lead_time_days,
+    r.adults + r.children + r.babies AS guests,
+    r.meal_plan,
+    r.adr,
+    coalesce(r.adr, 0) * r.nights AS booked_revenue,
+    r.deposit_type,
+    r.customer_type,
+    r.is_repeated_guest,
+    r.status,
+    r.status = 'canceled' AS is_canceled,
+    r.status = 'no_show' AS is_no_show,
+    r.canceled_at,
+    (r.canceled_at AT TIME ZONE h.timezone)::date AS canceled_date,
+    r.dq_issues,
+    r._batch_id
+FROM staging.pms_reservations AS r
+INNER JOIN staging.pms_hotels AS h ON r.hotel_id = h.hotel_id
+LEFT JOIN staging.pms_guests AS g ON r.guest_id = g.guest_id
+LEFT JOIN core.dim_channel AS c ON r.channel_code = c.channel_code
+WHERE r._batch_id = '{{ run_id }}'
+ON CONFLICT (reservation_id) DO UPDATE SET
+    confirmation_code = excluded.confirmation_code,
+    hotel_id = excluded.hotel_id,
+    guest_key = excluded.guest_key,
+    guest_country = excluded.guest_country,
+    channel_code = excluded.channel_code,
+    market_segment = excluded.market_segment,
+    reserved_room_type = excluded.reserved_room_type,
+    assigned_room_type = excluded.assigned_room_type,
+    booked_date = excluded.booked_date,
+    created_at = excluded.created_at,
+    arrival_date = excluded.arrival_date,
+    departure_date = excluded.departure_date,
+    nights = excluded.nights,
+    lead_time_days = excluded.lead_time_days,
+    guests = excluded.guests,
+    meal_plan = excluded.meal_plan,
+    adr = excluded.adr,
+    booked_revenue = excluded.booked_revenue,
+    deposit_type = excluded.deposit_type,
+    customer_type = excluded.customer_type,
+    is_repeated_guest = excluded.is_repeated_guest,
+    status = excluded.status,
+    is_canceled = excluded.is_canceled,
+    is_no_show = excluded.is_no_show,
+    canceled_at = excluded.canceled_at,
+    canceled_date = excluded.canceled_date,
+    dq_issues = excluded.dq_issues,
+    _batch_id = excluded._batch_id,
+    _loaded_at = now();

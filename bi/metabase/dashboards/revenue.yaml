@@ -1,0 +1,208 @@
+# Revenue & Distribution dashboard - provisioned by `python -m hotelpulse.metabase.provision`.
+# Cards are native SQL questions (cards/<file>.sql). `filters` wires each template tag to a
+# warehouse column (Metabase field filter) and to a dashboard parameter.
+# Layout uses Metabase's 24-column grid: position = [row, col, width, height].
+
+name: Revenue & Distribution
+homepage: true
+description: >-
+  Weekly revenue review for the general managers: how full were we, at what price, through
+  which channels - and what does the next four months look like compared to last year?
+
+parameters:
+  - id: hotel
+    name: Hotel
+    slug: hotel
+    type: string/=
+    sectionId: string
+  - id: period
+    name: Period
+    slug: period
+    type: date/all-options
+    sectionId: date
+    default: past26weeks
+
+sections:
+  - heading: Performance
+    position: [0, 0, 24, 1]
+    cards:
+      - name: Occupancy
+        sql: revenue/occupancy.sql
+        display: scalar
+        position: [1, 0, 6, 3]
+        description: Rooms sold divided by rooms available. Target 80 %.
+        filters:
+          hotel: marts.hotel_daily_kpi.hotel_name
+          period: marts.hotel_daily_kpi.stay_date
+        columns:
+          occupancy: {number_style: percent, decimals: 1}
+
+      - name: ADR
+        sql: revenue/adr.sql
+        display: scalar
+        position: [1, 6, 6, 3]
+        description: Average daily rate - room revenue per room sold (EUR).
+        filters:
+          hotel: marts.hotel_daily_kpi.hotel_name
+          period: marts.hotel_daily_kpi.stay_date
+        columns:
+          adr: {number_style: currency, currency: EUR, decimals: 2}
+
+      - name: RevPAR
+        sql: revenue/revpar.sql
+        display: scalar
+        position: [1, 12, 6, 3]
+        description: Revenue per available room = occupancy x ADR (EUR).
+        filters:
+          hotel: marts.hotel_daily_kpi.hotel_name
+          period: marts.hotel_daily_kpi.stay_date
+        columns:
+          revpar: {number_style: currency, currency: EUR, decimals: 2}
+
+      - name: Direct share
+        sql: revenue/direct_share.sql
+        display: scalar
+        position: [1, 18, 6, 3]
+        description: Share of sold room nights booked via website, phone or walk-in.
+        filters:
+          hotel: marts.hotel_daily_kpi.hotel_name
+          period: marts.hotel_daily_kpi.stay_date
+        columns:
+          direct_share: {number_style: percent, decimals: 1}
+
+      - name: Occupancy by week vs. last year
+        sql: revenue/occupancy_weekly_vs_ly.sql
+        display: line
+        position: [4, 0, 12, 6]
+        description: Weekly occupancy against the same weeks one year earlier (364 days, weekday-aligned).
+        filters:
+          hotel: marts.hotel_daily_kpi.hotel_name
+          period: marts.hotel_daily_kpi.stay_date
+        visualization:
+          graph.dimensions: [week]
+          graph.metrics: [occupancy, occupancy_last_year]
+          graph.x_axis.title_text: Stay week
+          graph.y_axis.title_text: Occupancy
+          series_settings:
+            occupancy: {title: This year}
+            occupancy_last_year: {title: Last year, line.style: dashed}
+        columns:
+          occupancy: {number_style: percent, decimals: 0}
+          occupancy_last_year: {number_style: percent, decimals: 0}
+
+      - name: ADR and RevPAR by week
+        sql: revenue/adr_revpar_weekly.sql
+        display: line
+        position: [4, 12, 12, 6]
+        description: Price (ADR) and yield (RevPAR) per week, with last year's ADR for reference.
+        filters:
+          hotel: marts.hotel_daily_kpi.hotel_name
+          period: marts.hotel_daily_kpi.stay_date
+        visualization:
+          graph.dimensions: [week]
+          graph.metrics: [adr, revpar, adr_last_year]
+          graph.x_axis.title_text: Stay week
+          graph.y_axis.title_text: EUR
+          series_settings:
+            adr: {title: ADR}
+            revpar: {title: RevPAR}
+            adr_last_year: {title: ADR last year, line.style: dashed}
+        columns:
+          adr: {number_style: currency, currency: EUR, decimals: 0}
+          revpar: {number_style: currency, currency: EUR, decimals: 0}
+          adr_last_year: {number_style: currency, currency: EUR, decimals: 0}
+
+  - heading: Distribution
+    position: [10, 0, 24, 1]
+    cards:
+      - name: Channel mix by week
+        sql: revenue/channel_mix_weekly.sql
+        display: bar
+        position: [11, 0, 12, 6]
+        description: Sold room nights per channel group (stay week), as share of the total.
+        filters:
+          hotel: marts.channel_daily.hotel_name
+          period: marts.channel_daily.stay_date
+        visualization:
+          graph.dimensions: [week, channel_group]
+          graph.metrics: [room_nights]
+          stackable.stack_type: normalized
+          graph.x_axis.title_text: Stay week
+          graph.y_axis.title_text: Share of room nights
+
+      - name: Direct share of new bookings
+        sql: revenue/direct_booking_share_weekly.sql
+        display: line
+        position: [11, 12, 12, 6]
+        description: >-
+          Share of bookings made in each week that came in direct / via the website. Drops point
+          to problems in the direct booking funnel.
+        filters:
+          hotel: marts.channel_bookings_daily.hotel_name
+          period: marts.channel_bookings_daily.booked_date
+        visualization:
+          graph.dimensions: [booking_week]
+          graph.metrics: [direct_share_of_bookings, website_share_of_bookings]
+          graph.x_axis.title_text: Booking week
+          graph.y_axis.title_text: Share of new bookings
+          series_settings:
+            direct_share_of_bookings: {title: All direct channels}
+            website_share_of_bookings: {title: Hotel website}
+        columns:
+          direct_share_of_bookings: {number_style: percent, decimals: 0}
+          website_share_of_bookings: {number_style: percent, decimals: 0}
+
+      - name: Commission cost by channel
+        sql: revenue/commission_by_channel.sql
+        display: row
+        position: [17, 0, 12, 6]
+        description: Commission paid to intermediaries in the selected period (EUR).
+        filters:
+          hotel: marts.channel_daily.hotel_name
+          period: marts.channel_daily.stay_date
+        visualization:
+          graph.dimensions: [channel_name]
+          graph.metrics: [commission_cost]
+          graph.x_axis.title_text: ""
+          graph.y_axis.title_text: Commission (EUR)
+        columns:
+          commission_cost: {number_style: currency, currency: EUR, decimals: 0}
+
+      - name: Cancellation rate by lead time
+        sql: revenue/cancellation_by_lead_time.sql
+        display: bar
+        position: [17, 12, 12, 6]
+        description: Share of bookings (made in the selected period) that were canceled, by lead time.
+        filters:
+          hotel: core.dim_hotel.hotel_name
+          period: core.fct_reservation.booked_date
+        visualization:
+          graph.dimensions: [lead_time]
+          graph.metrics: [cancellation_rate]
+          graph.x_axis.title_text: Booking lead time
+          graph.y_axis.title_text: Canceled
+          graph.show_values: true
+        columns:
+          cancellation_rate: {number_style: percent, decimals: 0}
+
+  - heading: Booking pace (next four months)
+    position: [23, 0, 24, 1]
+    cards:
+      - name: On the books vs. same time last year
+        sql: revenue/booking_pace.sql
+        display: combo
+        position: [24, 0, 24, 7]
+        description: >-
+          Room nights already booked per upcoming stay week, compared with what was on the books
+          at the same time last year (STLY) and with last year's final result.
+        filters:
+          hotel: marts.booking_pace.hotel_name
+        visualization:
+          graph.dimensions: [stay_week]
+          graph.metrics: [on_the_books, same_time_last_year, last_year_final]
+          graph.x_axis.title_text: Stay week
+          graph.y_axis.title_text: Room nights
+          series_settings:
+            on_the_books: {title: On the books now, display: bar}
+            same_time_last_year: {title: Same time last year, display: line}
+            last_year_final: {title: Last year final, display: line, line.style: dashed}

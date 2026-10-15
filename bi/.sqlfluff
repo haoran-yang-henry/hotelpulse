@@ -1,0 +1,3 @@
+# Metabase template tags are written {{name}} (no padding), the form Metabase documents.
+[sqlfluff]
+exclude_rules = AM04, ST06, ST07, RF02, RF04, LT05, CV11, ST05, JJ01
