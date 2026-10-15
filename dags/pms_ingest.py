@@ -76,6 +76,7 @@ def pms_ingest():
                 lookback=timedelta(days=params["lookback_days"]),
                 full_refresh=params["full_refresh"],
                 target_is_empty=target_is_empty,
+                now=datetime.now(UTC),
             )
             if table.incremental_column is None:
                 window = ex.Window(None, end)
