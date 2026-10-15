@@ -10,7 +10,14 @@ pytest.importorskip("airflow")
 from airflow.dag_processing.dagbag import DagBag
 
 DAGS_DIR = Path("/opt/airflow/dags")
-EXPECTED = {"sim_pms_source", "pms_ingest", "marts_build"}
+EXPECTED = {
+    "sim_pms_source",
+    "pms_ingest",
+    "marts_build",
+    "sim_web_traffic",
+    "web_events_ingest",
+    "web_marts_build",
+}
 
 
 @pytest.fixture(scope="module")
