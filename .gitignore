@@ -1,0 +1,35 @@
+# --- Planning & decision records (kept local, see planning/README.md) ---
+planning/
+
+# --- Secrets / local config ---
+.env
+*.local.env
+
+# --- Data (downloaded datasets, landing zones, exports) ---
+data/*
+!data/.gitkeep
+
+# --- Airflow runtime ---
+airflow/logs/
+logs/
+*.generated
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# --- Editors / OS ---
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db

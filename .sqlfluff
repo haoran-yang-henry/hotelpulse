@@ -1,0 +1,28 @@
+[sqlfluff]
+dialect = postgres
+templater = jinja
+max_line_length = 120
+# Layout/capitalisation rules are enforced; ambiguous-style rules are relaxed for readability.
+exclude_rules = AM04, ST06, ST07, RF02, RF04, LT05, CV11, ST05
+
+[sqlfluff:templater:jinja:context]
+run_id = manual__2026-01-01T00:00:00+00:00
+ds = 2026-01-01
+params = {"full_refresh": false}
+
+[sqlfluff:indentation]
+indented_joins = false
+implicit_indents = allow
+
+[sqlfluff:rules:capitalisation.keywords]
+capitalisation_policy = upper
+
+[sqlfluff:rules:capitalisation.functions]
+extended_capitalisation_policy = lower
+ignore_words = ANY
+
+[sqlfluff:rules:capitalisation.literals]
+capitalisation_policy = upper
+
+[sqlfluff:rules:capitalisation.types]
+extended_capitalisation_policy = lower

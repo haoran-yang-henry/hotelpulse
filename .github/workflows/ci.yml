@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - name: Lint (ruff)
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+      - name: Lint (sqlfluff)
+        run: uv run sqlfluff lint warehouse bi
+      - name: Unit tests
+        run: uv run pytest
+
+  dag-integrity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create .env
+        run: python3 scripts/init_env.py
+      - name: Build Airflow image
+        run: docker compose build airflow-cli
+      - name: DAG integrity tests
+        run: >
+          docker compose run --rm --no-deps airflow-cli
+          bash -c "cd /opt/hotelpulse && python -m pytest -p no:cacheprovider tests/dags"
