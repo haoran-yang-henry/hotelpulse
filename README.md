@@ -32,16 +32,22 @@ lets every chart **explain itself** in plain language.
 
 | Area | What it does | Status |
 |---|---|---|
-| Living source systems | A simulated PMS replays 119k real bookings, time-shifted so that history, today and future reservations line up with the wall clock. Known anomalies are injected as ground truth. | 🚧 |
-| Layered warehouse | `raw → staging → core → marts` in plain PostgreSQL SQL: append-only raw change log, `MERGE`-based staging, star schema, dashboard-ready marts | 🚧 |
-| Orchestration | Airflow 3 DAGs with incremental, idempotent loads (data-interval windows with look-back), asset-driven downstream scheduling, backfill support | 🚧 |
-| Data quality as code | SQL checks that return violating rows; results persisted to `audit.dq_results`; error-level failures stop the pipeline | 🚧 |
-| Revenue analytics | Occupancy, ADR, RevPAR, channel mix and commission cost, booking pace (on-the-books vs. same time last year) | 🚧 |
-| Dashboards as code | Metabase questions and dashboards defined in YAML + SQL and provisioned through the Metabase API | 🚧 |
-| Privacy by design | Personal data stops at staging (salted hashes); BI uses a read-only role limited to modelled schemas | 🚧 |
+| Living source systems | A simulated PMS replays 119k real bookings, shifted by whole years (seasons and weekdays stay aligned) so that history, today and future reservations line up with the wall clock. Known anomalies are injected as ground truth. | ✅ |
+| Layered warehouse | `raw → staging → core → marts` in plain PostgreSQL SQL: append-only raw change log, `MERGE`-based staging, star schema, dashboard-ready marts | ✅ |
+| Orchestration | Airflow 3 DAGs with incremental, idempotent loads (data-interval windows with look-back), asset-driven downstream scheduling, backfill support | ✅ |
+| Data quality as code | SQL checks that return violating rows; results persisted to `audit.dq_results`; error-level failures stop the pipeline | ✅ |
+| Revenue analytics | Occupancy, ADR, RevPAR, channel mix and commission cost, booking pace (on-the-books vs. same time last year) | ✅ |
+| Dashboards as code | Metabase questions and dashboards defined in YAML + SQL and provisioned through the Metabase API | ✅ |
+| Privacy by design | Personal data stops at staging (salted hashes); BI uses a read-only role limited to modelled schemas | ✅ |
 | Website tracking | Demo booking site, JavaScript tracker, event collector, sessionisation, booking funnel, attribution and reconciliation against the PMS | 🚧 |
 | Operations & reviews | Consumables forecasting and purchase suggestions; review ingestion with topic and sentiment tagging | 🚧 |
 | **Explain this chart** | A button next to every chart: computes facts (deltas, anomalies, drivers), turns them into a narrative with an LLM and verifies every number against the facts | 🚧 |
+
+## Dashboard
+
+![Revenue & Distribution dashboard](docs/images/revenue-dashboard.png)
+
+*Revenue & Distribution: KPIs, year-over-year trends, channel mix, direct booking intake and the booking pace for the next four months. The dip in direct bookings at the end of September is an injected anomaly (a mobile payment outage pushing guests to OTAs).*
 
 ## Architecture
 
