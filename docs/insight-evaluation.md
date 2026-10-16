@@ -5,16 +5,18 @@ the charts in which the injected anomalies should be visible (default filters), 
 control charts that the anomalies do not touch (a short-lived signal there during the A1 window counts as a false alarm). Ground truth: `src/hotelpulse/simulator/anomalies.yaml`.
 
 - Model: `deepseek-v4-pro`, anchor date 2026-10-16
-- Fact-level detection: **4/4 (100 %)**
-- Narrative-level detection: **4/4 (100 %)**
-- All numbers verified: **6/6 (100 %)**
+- Fact-level detection: **6/6 (100 %)**
+- Narrative-level detection: **6/6 (100 %)**
+- All numbers verified: **8/8 (100 %)**
 - False alarms on control charts: **0/2 (0 %)**
 
 | Anomaly | Chart | Detected | Numbers verified | Latency | Headline |
 |---|---|---|---|---|---|
-| A1 | Payment success rate by device | facts ✅ · narrative ✅ | ✅ | 7.1 s | Mobile payment success rate has dropped sharply, while desktop and tablet remain stable. |
-| A1 | Failed payments by error code | facts ✅ · narrative ✅ | ✅ | 7.6 s | Gateway_timeout failures spiked in late September, driving total failures up, but have since declined. |
-| A1 | Direct share of new bookings | facts ✅ · narrative ✅ | ✅ | 7.6 s | Direct booking share dipped in late September but is recovering in early October. |
-| A5 | Tracking coverage by week | facts ✅ · narrative ✅ | ✅ | 7.0 s | Tracking coverage has fallen sharply since mid-August and hit 37.1% last week, far below the 60% warning threshold. |
-| control | Occupancy by week vs. last year | no false alarm ✅ | ✅ | 7.8 s | Occupancy is above last year and target, driven by a strong current year since July. |
-| control | ADR and RevPAR by week | no false alarm ✅ | ✅ | 10.8 s | ADR and RevPAR show strong recent uptrends with seasonal peaks, but ADR growth over last year remains modest (+1.8%). |
+| A1 | Payment success rate by device | facts ✅ · narrative ✅ | ✅ | 0.2 s | Mobile payment success rate dropped sharply from late September and remains low, while desktop and tablet stayed stable. |
+| A1 | Failed payments by error code | facts ✅ · narrative ✅ | ✅ | 5.8 s | Payment failures spiked sharply in late September, driven entirely by gateway_timeout errors. |
+| A1 | Direct share of new bookings | facts ✅ · narrative ✅ | ✅ | 6.3 s | Direct booking share hit a September low but is recovering, though remains below typical levels. |
+| A5 | Tracking coverage by week | facts ✅ · narrative ✅ | ✅ | 6.3 s | Tracking coverage dropped from 76.1% to 51.4% average from week of 2026-08-17, latest 37.1%. |
+| A2 | Usage per room night by item | facts ✅ · narrative ✅ | ✅ | 7.4 s | Towels laundered per room night shifted upward, while other items remained broadly stable. |
+| A3 | Breakfast complaints by occupancy during the stay | facts ✅ · narrative ✅ | ✅ | 9.4 s | Breakfast complaints spike to 9.0% when occupancy reaches 90% or above, more than double the next bracket. |
+| control | Occupancy by week vs. last year | no false alarm ✅ | ✅ | 7.2 s | Occupancy is up year over year, with a strong recent level and only one dip below LY. |
+| control | ADR and RevPAR by week | no false alarm ✅ | ✅ | 7.0 s | ADR and RevPAR surged from June, peaking in mid-August before declining into October, while last year's ADR fell sharply after August. |

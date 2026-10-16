@@ -27,3 +27,28 @@ anomalies:
     effects:
       web:
         consent_rate: 0.55
+
+  - id: A2
+    name: laundry_supplier_change
+    description: >-
+      The resort switched to a new laundry supplier that bills per towel and collects towels
+      more often. Towels laundered per occupied room night rise by about 35 %.
+    start_offset_days: -35
+    end_offset_days: 3650  # still live
+    effects:
+      inventory:
+        hotel: RESORT
+        item: towel_laundry
+        factor: 1.35
+
+  - id: A3
+    name: breakfast_capacity
+    description: >-
+      Breakfast is staffed for a normal house. When the hotel is (nearly) full during a stay,
+      queues and empty buffets make breakfast complaints in reviews roughly twice as likely.
+    start_offset_days: -3650  # structural: always present
+    end_offset_days: 3650
+    effects:
+      reviews:
+        occupancy_above: 0.90
+        breakfast_complaint_factor: 2.2

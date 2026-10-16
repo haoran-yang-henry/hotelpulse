@@ -17,6 +17,9 @@ EXPECTED = {
     "sim_web_traffic",
     "web_events_ingest",
     "web_marts_build",
+    "sim_operations",
+    "operations_ingest",
+    "operations_marts_build",
     "platform_health",
     "ops_alert_drill",
 }

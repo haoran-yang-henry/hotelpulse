@@ -1,7 +1,8 @@
 """End-to-end tests against the running stack - `make e2e` (or `make e2e-clean` from scratch).
 
 They exercise the real paths: website -> PMS -> warehouse, tracker -> collector -> landing
-zone -> warehouse, dashboards, explanations, alerting and an idempotent backfill.
+zone -> warehouse, operational exports -> warehouse, dashboards, explanations, alerting and an
+idempotent backfill.
 """
 
 import json
@@ -22,6 +23,9 @@ CORE_TABLES = (
     "marts.hotel_daily_kpi",
     "marts.booking_pace",
     "marts.web_funnel_daily",
+    "marts.consumables_daily",
+    "marts.guest_reviews",
+    "marts.purchase_suggestion",
 )
 
 
@@ -59,9 +63,12 @@ def test_warehouse_is_loaded_and_trustworthy(dwh):
 
 
 def test_every_dashboard_card_runs(metabase, dashboards):
-    assert {"Revenue & Distribution", "Website & Booking Funnel", "Data Platform Health"} <= set(
-        dashboards
-    )
+    assert {
+        "Revenue & Distribution",
+        "Website & Booking Funnel",
+        "Operations & Guest Experience",
+        "Data Platform Health",
+    } <= set(dashboards)
     for dash in dashboards.values():
         params = {p["id"]: p for p in dash["parameters"]}
         for dc in dash["dashcards"]:
@@ -135,6 +142,14 @@ def test_tracking_event_reaches_the_warehouse(airflow, dwh):
         (event_id,),
     ).fetchone()
     assert session == ("email",)
+
+
+def test_reviews_are_linked_to_pms_stays(dwh):
+    linked, reviews = dwh.execute(
+        "SELECT count(reservation_id), count(*) FROM marts.guest_reviews"
+    ).fetchone()
+    assert reviews > 0 and linked / reviews > 0.95
+    assert count(dwh, "marts.purchase_suggestion") == 2 * count(dwh, "core.dim_consumable")
 
 
 def test_explanation_is_grounded_in_the_data(dashboards):

@@ -1,0 +1,214 @@
+# Operations & Guest Experience dashboard - see revenue.yaml for the format.
+
+name: Operations & Guest Experience
+description: >-
+  For the operations and housekeeping managers: what do consumables cost per occupied room,
+  what should we order for the next two weeks - and what do guests say about their stay?
+
+parameters:
+  - id: hotel
+    name: Hotel
+    slug: hotel
+    type: string/=
+    sectionId: string
+  - id: period
+    name: Period
+    slug: period
+    type: date/all-options
+    sectionId: date
+    default: past26weeks
+
+sections:
+  - heading: At a glance
+    position: [0, 0, 24, 1]
+    cards:
+      - name: Consumables cost per occupied room
+        sql: operations/cost_per_occupied_room.sql
+        explain:
+          intent: What do guest consumables (laundry, amenities, breakfast) cost per room sold?
+        display: scalar
+        position: [1, 0, 6, 3]
+        description: Cost of towels laundered, amenities and breakfast covers per occupied room (CPOR).
+        filters:
+          hotel: marts.consumables_daily.hotel_name
+          period: marts.consumables_daily.usage_date
+        columns:
+          cost_per_occupied_room: {number_style: currency, currency: EUR, decimals: 2}
+
+      - name: Consumables cost
+        sql: operations/consumables_cost.sql
+        explain:
+          intent: How much did guest consumables cost in total?
+        display: scalar
+        position: [1, 6, 6, 3]
+        description: Total cost of consumables used (EUR).
+        filters:
+          hotel: marts.consumables_daily.hotel_name
+          period: marts.consumables_daily.usage_date
+        columns:
+          consumables_cost: {number_style: currency, currency: EUR, decimals: 0}
+
+      - name: Average review score
+        sql: operations/average_review_score.sql
+        explain:
+          intent: How satisfied are our guests? Compare with the 8.5 target.
+          target: {value: 8.5, label: group target}
+        display: scalar
+        position: [1, 12, 6, 3]
+        description: Average rating (1-10) of the reviews posted on Booking.com, Google and Tripadvisor.
+        filters:
+          hotel: marts.guest_reviews.hotel_name
+          period: marts.guest_reviews.posted_date
+        columns:
+          average_review_score: {decimals: 2}
+
+      - name: Breakfast complaint rate
+        sql: operations/breakfast_complaint_rate.sql
+        explain:
+          intent: How often do guests complain about breakfast?
+        display: scalar
+        position: [1, 18, 6, 3]
+        description: Share of reviews with a negative comment about breakfast.
+        filters:
+          hotel: marts.guest_reviews.hotel_name
+          period: marts.guest_reviews.posted_date
+        columns:
+          breakfast_complaint_rate: {number_style: percent, decimals: 1}
+
+  - heading: Consumables
+    position: [4, 0, 24, 1]
+    cards:
+      - name: Consumables cost per occupied room by week
+        sql: operations/cost_per_occupied_room_weekly.sql
+        explain:
+          intent: Is the cost of consumables per room sold stable, and is either hotel drifting?
+        display: line
+        position: [5, 0, 12, 6]
+        description: Weekly consumables cost per occupied room, per hotel.
+        filters:
+          hotel: marts.consumables_daily.hotel_name
+          period: marts.consumables_daily.usage_date
+        visualization:
+          graph.dimensions: [week, hotel_name]
+          graph.metrics: [cost_per_occupied_room]
+          graph.x_axis.title_text: Week
+          graph.y_axis.title_text: EUR per occupied room
+        columns:
+          cost_per_occupied_room: {number_style: currency, currency: EUR, decimals: 2}
+
+      - name: Usage per room night by item
+        sql: operations/usage_rate_weekly.sql
+        explain:
+          intent: >-
+            Has the amount used per room night changed for any item? A change that occupancy
+            does not explain points to a process, supplier or waste problem.
+        display: line
+        position: [5, 12, 12, 6]
+        description: >-
+          Units used per occupied room night (breakfast covers: per breakfast guest), weekly.
+          Select one hotel to compare like with like.
+        filters:
+          hotel: marts.consumables_daily.hotel_name
+          period: marts.consumables_daily.usage_date
+        visualization:
+          graph.dimensions: [week, item_name]
+          graph.metrics: [usage_per_room_night]
+          graph.x_axis.title_text: Week
+          graph.y_axis.title_text: Units per room night
+
+      - name: Purchase suggestion for the next 14 nights
+        sql: operations/purchase_suggestion.sql
+        explain: false
+        display: table
+        position: [11, 0, 24, 8]
+        description: >-
+          Median usage per room night (breakfast covers: per breakfast guest) of the last 28
+          days x room nights already on the books for the next 14 nights x a safety buffer.
+          A large change against the 28 days before deserves a look before ordering.
+        filters:
+          hotel: marts.purchase_suggestion.hotel_name
+        columns:
+          hotel_name: {column_title: Hotel}
+          item_name: {column_title: Item}
+          usage_per_driver: {column_title: Usage per unit (last 28 days), decimals: 2}
+          usage_per_driver_prev: {column_title: Usage per unit (28 days before), decimals: 2}
+          usage_change: {column_title: Change, number_style: percent, decimals: 0}
+          forecast_driver_units: {column_title: Room nights / guests on the books}
+          suggested_quantity: {column_title: Suggested order}
+          unit: {column_title: Unit}
+          estimated_cost_eur: {column_title: Estimated cost, number_style: currency, currency: EUR, decimals: 0}
+
+  - heading: Guest experience
+    position: [19, 0, 24, 1]
+    cards:
+      - name: Review score by week
+        sql: operations/review_score_weekly.sql
+        explain:
+          intent: Is guest satisfaction improving or slipping, and in which hotel?
+        display: line
+        position: [20, 0, 12, 6]
+        description: Weekly average review score (1-10) per hotel.
+        filters:
+          hotel: marts.guest_reviews.hotel_name
+          period: marts.guest_reviews.posted_date
+        visualization:
+          graph.dimensions: [week, hotel_name]
+          graph.metrics: [average_review_score]
+          graph.x_axis.title_text: Review week
+          graph.y_axis.title_text: Average score
+          graph.y_axis.auto_range: false
+          graph.y_axis.min: 6
+          graph.y_axis.max: 10
+        columns:
+          average_review_score: {decimals: 1}
+
+      - name: Complaints by topic
+        sql: operations/complaints_by_topic.sql
+        explain:
+          intent: What do guests complain about most?
+        display: row
+        position: [20, 12, 12, 6]
+        description: Negative mentions per 100 reviews, by topic (aspect sentiment from the review tool).
+        filters:
+          hotel: marts.review_topics.hotel_name
+          period: marts.review_topics.posted_date
+        visualization:
+          graph.dimensions: [topic]
+          graph.metrics: [complaints_per_100_reviews]
+          graph.x_axis.title_text: ""
+          graph.y_axis.title_text: Complaints per 100 reviews
+          graph.show_values: true
+
+      - name: Breakfast complaints by occupancy during the stay
+        sql: operations/breakfast_complaints_by_occupancy.sql
+        explain:
+          intent: >-
+            Do guests complain more about breakfast when the hotel is full? If so, breakfast
+            staffing should follow the occupancy forecast.
+        display: bar
+        position: [26, 0, 12, 6]
+        description: >-
+          Share of reviews complaining about breakfast, by the hotel's average occupancy
+          during the guest's stay (reviews linked to PMS stays by confirmation code).
+        filters:
+          hotel: marts.guest_reviews.hotel_name
+          period: marts.guest_reviews.posted_date
+        visualization:
+          graph.dimensions: [occupancy_band]
+          graph.metrics: [breakfast_complaint_rate]
+          graph.x_axis.title_text: Hotel occupancy during the stay
+          graph.y_axis.title_text: Reviews complaining about breakfast
+          graph.show_values: true
+        columns:
+          breakfast_complaint_rate: {number_style: percent, decimals: 1}
+    texts:
+      - position: [26, 12, 12, 6]
+        text: |
+          **Connecting operations to the guest.**
+
+          Consumables are measured *per occupied room night* from the PMS, so a busy month
+          does not look like waste. Reviews are linked to the guest's stay through the
+          confirmation code, which shows how the hotel was running while they were there.
+
+          The purchase suggestion is a transparent rule, not a black box: recent usage rate
+          x rooms already on the books x a small buffer.

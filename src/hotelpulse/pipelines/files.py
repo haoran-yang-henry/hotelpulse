@@ -6,6 +6,7 @@ that arrive late are simply picked up by the next run.
 """
 
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -27,6 +28,11 @@ WEB_DATASETS = (
     FileDataset(landing.WEB_EVENTS, "raw.web_events"),
     FileDataset(landing.WEB_EVENTS_REJECTED, "raw.web_events_rejected"),
 )
+OPERATIONS_DATASETS = (
+    FileDataset(landing.INVENTORY, "raw.inventory_usage"),
+    FileDataset(landing.REVIEWS, "raw.reviews"),
+)
+ALL_DATASETS = WEB_DATASETS + OPERATIONS_DATASETS
 
 
 def pending_files(
@@ -68,13 +74,17 @@ def load_file(
 
 
 def load_pending(
-    conn: psycopg.Connection, root: Path, batch_id: str, limit: int = 10_000
+    conn: psycopg.Connection,
+    root: Path,
+    batch_id: str,
+    datasets: Iterable[FileDataset] = WEB_DATASETS,
+    limit: int = 10_000,
 ) -> dict[str, dict[str, int]]:
-    """Load every pending file of the web datasets. Returns files/rows per dataset."""
+    """Load every pending file of the given datasets. Returns files/rows per dataset."""
     if not conn.autocommit:
         raise ValueError("load_pending needs an autocommit connection (one transaction per file)")
     summary = {}
-    for dataset in WEB_DATASETS:
+    for dataset in datasets:
         files = pending_files(conn, root, dataset, limit)
         rows = sum(load_file(conn, dataset, key, path, batch_id) for key, path in files)
         summary[dataset.name] = {"files": len(files), "rows": rows}

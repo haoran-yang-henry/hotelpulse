@@ -18,6 +18,8 @@ from uuid import uuid4
 
 WEB_EVENTS = "web_events"
 WEB_EVENTS_REJECTED = "web_events_rejected"
+INVENTORY = "inventory"  # daily consumables export
+REVIEWS = "reviews"  # daily review-platform export
 FILE_GLOB = "dt=*/hour=*/*.jsonl.gz"
 
 

@@ -20,7 +20,7 @@ from hotelpulse.metabase.client import MetabaseClient, MetabaseError
 log = logging.getLogger("hotelpulse.insight")
 
 # bump when facts or the response format change: cached explanations are keyed on it
-FACTS_VERSION = "2026-10-16.6"
+FACTS_VERSION = "2026-10-16.7"
 DASHBOARD_TTL_S = 60
 
 

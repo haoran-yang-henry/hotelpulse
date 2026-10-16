@@ -3,8 +3,9 @@
 1. Apply pending warehouse migrations.
 2. Seed the simulated PMS once (download dataset, build timeline) and reveal up to now.
 3. Seed the website-tracking history once (landing-zone files since tracking go-live).
+4. Export the consumables and review history up to yesterday (watermark).
 
-Both steps are idempotent.
+All steps are idempotent.
 """
 
 import logging
@@ -13,7 +14,7 @@ from datetime import UTC, date, datetime
 import psycopg
 
 from hotelpulse import migrate, settings
-from hotelpulse.simulator import pms, web
+from hotelpulse.simulator import operations, pms, web
 
 log = logging.getLogger("hotelpulse.bootstrap")
 
@@ -25,6 +26,7 @@ def main() -> None:
         pms.seed(conn, settings.sim_anchor_date() or date.today(), settings.DATA_DIR)
         pms.reveal(conn, datetime.now(UTC))
         web.seed_history(conn, settings.landing_dir(), datetime.now(UTC))
+        operations.run(conn, settings.landing_dir(), datetime.now(UTC))
     log.info("Bootstrap complete")
 
 

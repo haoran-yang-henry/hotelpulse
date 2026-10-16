@@ -8,6 +8,9 @@ an explanation (default filters). Two levels are scored:
 * **facts** - the deterministic engine flags the right series, direction and time window;
 * **narrative** - the headline/observations name the affected series and the time window.
 
+Structural anomalies (always present, e.g. A3) are scored on a category chart instead: the
+affected category must rank first, and the narrative must name it.
+
 Control charts without an injected anomaly check that nothing is flagged in those windows.
 """
 
@@ -42,6 +45,7 @@ class Case:
     series: str
     direction: str | None
     keywords: tuple[str, ...] = ()
+    structural: bool = False  # category chart: the affected category ranks first
 
 
 CASES = [
@@ -53,6 +57,11 @@ CASES = [
          {"period": "past26weeks"}, "Hotel website", "low", ("website",)),
     Case("A5", "Website & Booking Funnel", "Tracking coverage by week",
          {"period": "past12weeks"}, "Tracking coverage", "low", ("coverage",)),
+    Case("A2", "Operations & Guest Experience", "Usage per room night by item",
+         {"period": "past26weeks", "hotel": "HotelPulse Resort Algarve"}, "Towels laundered",
+         "high", ("towel",)),
+    Case("A3", "Operations & Guest Experience", "Breakfast complaints by occupancy during the stay",
+         {"period": "past26weeks"}, "90 % and above", "high", ("90",), structural=True),
     Case(None, "Revenue & Distribution", "Occupancy by week vs. last year",
          {"period": "past26weeks"}, "This year", None),
     Case(None, "Revenue & Distribution", "ADR and RevPAR by week",
@@ -81,6 +90,14 @@ def fact_hit(
     return False
 
 
+def ranks_first(case: Case, facts: list[dict]) -> bool:
+    return any(
+        f["kind"] == "ranking" and (f.get("meta") or {}).get("series") == case.series
+        and (f.get("meta") or {}).get("rank") == 1
+        for f in facts
+    )  # fmt: skip
+
+
 def mentions_window(text: str, start: date, end: date) -> bool:
     days = {start + timedelta(days=i) for i in range(-10, (end - start).days + 11)}
     if any(d.isoformat() in text for d in days):
@@ -92,7 +109,7 @@ def mentions_window(text: str, start: date, end: date) -> bool:
 def narrative_hit(case: Case, narrative: dict, start: date, end: date) -> bool:
     text = " ".join([narrative["headline"], *(o["text"] for o in narrative["observations"])])
     named = any(k.lower() in text.lower() for k in case.keywords)
-    return named and mentions_window(text, start, end)
+    return named and (case.structural or mentions_window(text, start, end))
 
 
 def run(insight_url: str, mb: MetabaseClient, anchor: date, today: date) -> str:
@@ -124,7 +141,11 @@ def run(insight_url: str, mb: MetabaseClient, anchor: date, today: date) -> str:
         meta = body["meta"]
         if case.anomaly:
             start, end = windows[case.anomaly]
-            f_hit = fact_hit(case, body["facts"], start, end)
+            f_hit = (
+                ranks_first(case, body["facts"])
+                if case.structural
+                else fact_hit(case, body["facts"], start, end)
+            )
             n_hit = narrative_hit(case, body["narrative"], start, end)
             scores["facts"].append(f_hit)
             scores["narrative"].append(n_hit)
