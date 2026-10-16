@@ -4,8 +4,10 @@ Idempotent - safe to run on every start:
 
 1. complete the first-run setup (admin account) or log in;
 2. register the warehouse with the read-only ``bi_reader`` role (schemas core, marts, audit);
-3. wait for the metadata sync, resolve field ids for field filters;
-4. create or update the collection, the native-SQL questions and the dashboards (matched by name).
+3. create the non-admin service account the insight service queries with (ADR-0017);
+4. wait for the metadata sync, resolve field ids for field filters;
+5. create or update the collection, the native-SQL questions and the dashboards (matched by
+   name). Every chart gets an "Explain this chart" link above it (ADR-0015).
 """
 
 import logging
@@ -17,18 +19,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import httpx
-import yaml
-
-from hotelpulse import settings
+from hotelpulse.metabase import specs as spec_files
+from hotelpulse.metabase.client import MetabaseClient
 from hotelpulse.settings import require_env
 
 log = logging.getLogger("hotelpulse.metabase")
 
 COLLECTION_NAME = "HotelPulse"
 DATABASE_NAME = "HotelPulse Warehouse"
-DEFINITIONS_DIR = settings.BI_DIR / "metabase"
 WIDGET_TYPES = {"string/=": "string/=", "date/all-options": "date/all-options"}
+EXPLAIN_LABEL = "✨ Explain this chart"
 
 
 @dataclass(frozen=True)
@@ -39,6 +39,9 @@ class Config:
     dwh_host: str
     dwh_port: int
     dwh_password: str
+    insight_url: str
+    insight_email: str
+    insight_password: str | None
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -49,76 +52,43 @@ class Config:
             dwh_host=os.environ.get("MB_DWH_HOST", "postgres"),
             dwh_port=int(os.environ.get("MB_DWH_PORT", "5432")),
             dwh_password=require_env("BI_READER_PASSWORD"),
+            insight_url=os.environ.get("INSIGHT_PUBLIC_URL", "http://localhost:8020").rstrip("/"),
+            insight_email=os.environ.get("MB_INSIGHT_EMAIL", "insight.service@example.com"),
+            insight_password=os.environ.get("MB_INSIGHT_PASSWORD") or None,
         )
 
 
-class MetabaseClient:
-    def __init__(self, url: str) -> None:
-        self.http = httpx.Client(base_url=url.rstrip("/"), timeout=60)
-
-    def _call(self, method: str, path: str, **kwargs) -> Any:
-        response = self.http.request(method, f"/api{path}", **kwargs)
-        if response.is_error:
-            raise RuntimeError(f"{method} {path} -> {response.status_code}: {response.text[:500]}")
-        return response.json() if response.content else None
-
-    def get(self, path: str, **kw) -> Any:
-        return self._call("GET", path, **kw)
-
-    def post(self, path: str, body: Any = None) -> Any:
-        return self._call("POST", path, json=body)
-
-    def put(self, path: str, body: Any) -> Any:
-        return self._call("PUT", path, json=body)
-
+class ProvisioningClient(MetabaseClient):
     # ------------------------------------------------------------------ session
-    def wait_until_healthy(self, timeout_s: int = 600) -> None:
-        deadline = time.monotonic() + timeout_s
-        while time.monotonic() < deadline:
-            try:
-                if self.http.get("/api/health").json().get("status") == "ok":
-                    return
-            except (httpx.HTTPError, ValueError):
-                pass
-            time.sleep(5)
-        raise TimeoutError("Metabase did not become healthy")
-
     def setup_or_login(self, cfg: Config) -> bool:
         """Log in, running the first-time setup if needed. Returns True on a fresh instance."""
         props = self.get("/session/properties")
-        fresh = not props.get("has-user-setup")
-        if fresh:
-            log.info("Running first-time setup")
-            session = self.post(
-                "/setup",
-                {
-                    "token": props["setup-token"],
-                    "user": {
-                        "email": cfg.admin_email,
-                        "password": cfg.admin_password,
-                        "first_name": "HotelPulse",
-                        "last_name": "Admin",
-                        "site_name": "HotelPulse",
-                    },
-                    "prefs": {
-                        "site_name": "HotelPulse",
-                        "site_locale": "en",
-                        "allow_tracking": False,
-                    },
+        if props.get("has-user-setup"):
+            self.login(cfg.admin_email, cfg.admin_password)
+            return False
+        log.info("Running first-time setup")
+        session = self.post(
+            "/setup",
+            {
+                "token": props["setup-token"],
+                "user": {
+                    "email": cfg.admin_email,
+                    "password": cfg.admin_password,
+                    "first_name": "HotelPulse",
+                    "last_name": "Admin",
+                    "site_name": "HotelPulse",
                 },
-            )
-        else:
-            session = self.post(
-                "/session", {"username": cfg.admin_email, "password": cfg.admin_password}
-            )
+                "prefs": {"site_name": "HotelPulse", "site_locale": "en", "allow_tracking": False},
+            },
+        )
         self.http.headers["X-Metabase-Session"] = session["id"]
-        return fresh
+        return True
 
     def remove_sample_content(self) -> None:
         """Drop Metabase's bundled sample database and example collection (fresh instance only)."""
         for db in self.get("/database")["data"]:
             if db.get("is_sample"):
-                self._call("DELETE", f"/database/{db['id']}")
+                self.delete(f"/database/{db['id']}")
         for c in self.get("/collection"):
             if c.get("name") == "Examples" and not c.get("archived"):
                 self.put(f"/collection/{c['id']}", {"archived": True})
@@ -126,6 +96,18 @@ class MetabaseClient:
     def set_homepage(self, dashboard_id: int) -> None:
         self.put("/setting/custom-homepage", {"value": True})
         self.put("/setting/custom-homepage-dashboard", {"value": dashboard_id})
+
+    def ensure_service_user(self, email: str, password: str) -> None:
+        """Non-admin account the insight service runs queries with (ADR-0017)."""
+        users = self.get("/user", params={"include_deactivated": "true"})["data"]
+        user = next((u for u in users if u["email"].lower() == email.lower()), None)
+        if user is None:
+            user = self.post(
+                "/user", {"first_name": "Insight", "last_name": "Service", "email": email}
+            )
+        elif not user.get("is_active", True):
+            self.put(f"/user/{user['id']}/reactivate", {})
+        self.put(f"/user/{user['id']}/password", {"password": password})
 
     # ------------------------------------------------------------------ database
     def ensure_database(self, cfg: Config) -> int:
@@ -198,7 +180,7 @@ class MetabaseClient:
 def card_payload(
     card: dict, db_id: int, collection_id: int, fields: dict[str, int], params: dict[str, dict]
 ) -> dict:
-    query = (DEFINITIONS_DIR / "cards" / card["sql"]).read_text(encoding="utf-8")
+    query = (spec_files.DEFINITIONS_DIR / "cards" / card["sql"]).read_text(encoding="utf-8")
     template_tags = {
         tag: {
             "id": str(uuid.uuid5(uuid.NAMESPACE_URL, f"{card['name']}/{tag}")),
@@ -229,81 +211,116 @@ def card_payload(
     }
 
 
-def dashcards(spec: dict, card_ids: dict[str, int]) -> list[dict]:
+def virtual_card(display: str, text: str, **settings: Any) -> dict:
+    return {
+        "virtual_card": {
+            "name": None,
+            "display": display,
+            "visualization_settings": {},
+            "dataset_query": {},
+            "archived": False,
+        },
+        "text": text,
+        **settings,
+    }
+
+
+def explain_link(insight_url: str, dashboard_id: int, card_id: int, tags: list[str]) -> str:
+    """Markdown link whose URL carries the dashboard's current filter values.
+
+    Metabase substitutes ``{{tag}}`` with the *display* value (e.g. "Previous 12 weeks"); the
+    angle brackets keep a CommonMark link valid even though those values contain spaces.
+    """
+    query = f"dashboard={dashboard_id}&card={card_id}"
+    query += "".join(f"&{tag}={{{{{tag}}}}}" for tag in tags)
+    return f"[{EXPLAIN_LABEL}](<{insight_url}/explain?{query}>)"
+
+
+def row_shift(spec: dict):
+    """Each chart gets a one-row explain bar above it: rows below move down accordingly."""
+    starts = sorted({card["position"][0] for card in spec_files.iter_cards(spec)})
+    return lambda row: row + sum(1 for s in starts if s <= row)
+
+
+def dashcards(
+    spec: dict, card_ids: dict[str, int], dashboard_id: int, insight_url: str
+) -> list[dict]:
+    shift = row_shift(spec)
     result: list[dict] = []
-    next_id = -1
-    for section in spec["sections"]:
-        row, col, width, height = section["position"]
+
+    def add(row: int, col: int, width: int, height: int, **fields: Any) -> None:
         result.append(
             {
-                "id": next_id,
+                "id": -(len(result) + 1),
                 "card_id": None,
                 "row": row,
                 "col": col,
                 "size_x": width,
                 "size_y": height,
                 "parameter_mappings": [],
-                "visualization_settings": {
-                    "virtual_card": {
-                        "name": None,
-                        "display": "heading",
-                        "visualization_settings": {},
-                        "dataset_query": {},
-                        "archived": False,
-                    },
-                    "text": section["heading"],
-                    "dashcard.background": False,
-                },
+                "visualization_settings": {},
+                **fields,
             }
         )
-        next_id -= 1
+
+    for section in spec["sections"]:
+        row, col, width, height = section["position"]
+        add(
+            shift(row),
+            col,
+            width,
+            height,
+            visualization_settings=virtual_card(
+                "heading", section["heading"], **{"dashcard.background": False}
+            ),
+        )
         for text in section.get("texts", []):
             row, col, width, height = text["position"]
-            result.append(
-                {
-                    "id": next_id,
-                    "card_id": None,
-                    "row": row,
-                    "col": col,
-                    "size_x": width,
-                    "size_y": height,
-                    "parameter_mappings": [],
-                    "visualization_settings": {
-                        "virtual_card": {
-                            "name": None,
-                            "display": "text",
-                            "visualization_settings": {},
-                            "dataset_query": {},
-                            "archived": False,
-                        },
-                        "text": text["text"],
-                    },
-                }
+            add(
+                shift(row),
+                col,
+                width,
+                height,
+                visualization_settings=virtual_card("text", text["text"]),
             )
-            next_id -= 1
         for card in section["cards"]:
             row, col, width, height = card["position"]
             card_id = card_ids[card["name"]]
-            result.append(
-                {
-                    "id": next_id,
-                    "card_id": card_id,
-                    "row": row,
-                    "col": col,
-                    "size_x": width,
-                    "size_y": height,
-                    "visualization_settings": {},
-                    "parameter_mappings": [
-                        {
-                            "parameter_id": tag,
-                            "card_id": card_id,
-                            "target": ["dimension", ["template-tag", tag]],
-                        }
-                        for tag in card.get("filters", {})
-                    ],
-                }
+            tags = list(card.get("filters", {}))
+            add(
+                shift(row) - 1,
+                col,
+                width,
+                1,
+                visualization_settings=virtual_card(
+                    "text",
+                    explain_link(insight_url, dashboard_id, card_id, tags),
+                    **{
+                        "dashcard.background": False,
+                        "text.align_horizontal": "right",
+                        "text.align_vertical": "bottom",
+                    },
+                ),
+                parameter_mappings=[
+                    {"parameter_id": tag, "card_id": None, "target": ["text-tag", tag]}
+                    for tag in tags
+                ],
             )
-            next_id -= 1
+            add(
+                shift(row),
+                col,
+                width,
+                height,
+                card_id=card_id,
+                parameter_mappings=[
+                    {
+                        "parameter_id": tag,
+                        "card_id": card_id,
+                        "target": ["dimension", ["template-tag", tag]],
+                    }
+                    for tag in tags
+                ],
+            )
     return result
 
 
@@ -317,41 +334,40 @@ def dashboard_parameters(spec: dict) -> list[dict]:
 # ---------------------------------------------------------------------- main
 
 
-def provision(cfg: Config, definitions: Path = DEFINITIONS_DIR) -> None:
-    client = MetabaseClient(cfg.url)
+def provision(cfg: Config, definitions: Path = spec_files.DEFINITIONS_DIR) -> None:
+    client = ProvisioningClient(cfg.url)
     client.wait_until_healthy()
     if client.setup_or_login(cfg):
         client.remove_sample_content()
     db_id = client.ensure_database(cfg)
+    if cfg.insight_password:
+        client.ensure_service_user(cfg.insight_email, cfg.insight_password)
+    else:
+        log.warning("MB_INSIGHT_PASSWORD not set - insight service account not provisioned")
     collection_id = client.ensure_collection(COLLECTION_NAME)
 
-    specs = [
-        yaml.safe_load(p.read_text(encoding="utf-8"))
-        for p in sorted((definitions / "dashboards").glob("*.yaml"))
-    ]
+    dashboards = spec_files.load_dashboards(definitions)
     required = {
         field
-        for spec in specs
-        for section in spec["sections"]
-        for card in section["cards"]
+        for spec in dashboards
+        for card in spec_files.iter_cards(spec)
         for field in card.get("filters", {}).values()
     }
     fields = client.field_ids(db_id, required)
 
     existing_cards = client.items(collection_id, "card")
     existing_dashboards = client.items(collection_id, "dashboard")
-    for spec in specs:
+    for spec in dashboards:
         params = {p["id"]: p for p in spec["parameters"]}
         card_ids: dict[str, int] = {}
-        for section in spec["sections"]:
-            for card in section["cards"]:
-                payload = card_payload(card, db_id, collection_id, fields, params)
-                if card["name"] in existing_cards:
-                    card_id = existing_cards[card["name"]]
-                    client.put(f"/card/{card_id}", payload)
-                else:
-                    card_id = client.post("/card", payload)["id"]
-                card_ids[card["name"]] = card_id
+        for card in spec_files.iter_cards(spec):
+            payload = card_payload(card, db_id, collection_id, fields, params)
+            if card["name"] in existing_cards:
+                card_id = existing_cards[card["name"]]
+                client.put(f"/card/{card_id}", payload)
+            else:
+                card_id = client.post("/card", payload)["id"]
+            card_ids[card["name"]] = card_id
 
         if spec["name"] in existing_dashboards:
             dashboard_id = existing_dashboards[spec["name"]]
@@ -365,7 +381,7 @@ def provision(cfg: Config, definitions: Path = DEFINITIONS_DIR) -> None:
                 "description": spec.get("description"),
                 "width": "full",
                 "parameters": dashboard_parameters(spec),
-                "dashcards": dashcards(spec, card_ids),
+                "dashcards": dashcards(spec, card_ids, dashboard_id, cfg.insight_url),
             },
         )
         if spec.get("homepage"):
