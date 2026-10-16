@@ -42,7 +42,7 @@ def test_expected_dags_present(dagbag):
 
 @pytest.mark.parametrize("dag_id", sorted(EXPECTED))
 def test_dag_conventions(dagbag, dag_id):
-    dag = dagbag.get_dag(dag_id)
+    dag = dagbag.dags[dag_id]  # in memory; get_dag() also queries the metadata DB
     assert dag.tags, "every DAG is tagged"
     assert dag.doc_md, "every DAG is documented"
     assert not dag.catchup
@@ -55,7 +55,7 @@ def test_dag_conventions(dagbag, dag_id):
 
 
 def test_pms_ingest_ends_with_quality_gate(dagbag):
-    dag = dagbag.get_dag("pms_ingest")
+    dag = dagbag.dags["pms_ingest"]
     leaves = {t.task_id for t in dag.leaves}
     assert leaves == {"dq_core"}
     assert dag.get_task("dq_core").outlets, "quality gate publishes the core asset"
