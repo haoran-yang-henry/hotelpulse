@@ -1,0 +1,67 @@
+# KPI glossary - given to the "Explain this chart" service as domain context. An entry is
+# included when one of its `match` words appears in the chart's title, columns or description.
+
+occupancy:
+  match: [occupancy]
+  text: >-
+    Occupancy = rooms sold / rooms available. Group target 80 %. City hotels peak on weekdays
+    (business demand), resorts in summer and on holidays.
+adr:
+  match: [adr]
+  text: >-
+    ADR (average daily rate) = room revenue / rooms sold, in EUR. Driven by pricing and by the
+    mix of channels, room types and seasons.
+revpar:
+  match: [revpar]
+  text: >-
+    RevPAR = room revenue / rooms available = occupancy x ADR. The main yield KPI: it rises
+    when the hotel fills rooms at good rates.
+direct_share:
+  match: [direct share, direct channels, direct]
+  text: >-
+    Direct channels = hotel website, phone/e-mail and walk-in. They carry no OTA commission
+    (OTAs charge 15-18 %), so a higher direct share means more net revenue per booking.
+channels:
+  match: [channel, ota, commission]
+  text: >-
+    Channel groups: Direct, OTA (Booking.com, Expedia, others; 15-18 % commission), Wholesale
+    (travel agents, tour operators, GDS; ~10 %), Groups, Corporate, Other.
+pace:
+  match: [on the books, same time last year, pace]
+  text: >-
+    On the books (OTB) = room nights already booked for future stays. STLY = what was on the
+    books at the same time last year for the same weekday-aligned week. OTB below STLY means
+    the hotel is booking slower than last year; last year's final shows how much pickup came
+    later.
+cancellation:
+  match: [cancellation, lead time]
+  text: >-
+    Cancellation rate = canceled bookings / bookings made. Bookings made far in advance and
+    through OTAs cancel more often (free cancellation).
+conversion:
+  match: [conversion, funnel, visits]
+  text: >-
+    Website conversion rate = visits ending in a booking / tracked visits. Typical for hotel
+    websites: 2-3 %. The funnel is closed: a visit counts at a step if it reached that step or
+    a later one.
+payment:
+  match: [payment]
+  text: >-
+    Payment success rate = visits with a booking / visits with a payment attempt. Normally
+    85-95 %. A drop on one device type only points to a technical problem in that checkout
+    (e.g. a payment provider or app/browser issue) rather than to demand. Error codes come from
+    the payment provider; gateway_timeout means the provider did not answer.
+tracking:
+  match: [tracking coverage, tracked]
+  text: >-
+    Tracking coverage = share of the PMS's website bookings that the web tracker saw. Visitors
+    who reject analytics cookies or use ad blockers are invisible to web analytics; a change to
+    the cookie-consent banner or to the tracker directly changes coverage. Below 60 % web
+    analytics numbers are unreliable as absolute values.
+attribution:
+  match: [first touch, last touch, attribution]
+  text: >-
+    First touch = channel of the guest's first visit in the 30 days before booking; last touch
+    = channel of the visit in which they booked. Last-touch reporting over-credits direct and
+    brand search and under-credits channels that start the journey (metasearch, social,
+    referral).

@@ -42,7 +42,7 @@ lets every chart **explain itself** in plain language.
 | Website tracking | Demo booking site with a consent-first JavaScript tracker, an event collector that validates against a versioned contract and writes a gzip JSONL landing zone, exactly-once file ingestion, clock-skew correction, bot and duplicate filtering, per-visitor incremental sessionisation | ✅ |
 | Web analytics | Closed booking funnel by device and channel, payment errors, first- vs. last-touch attribution, and tracking coverage reconciled against the PMS | ✅ |
 | Operations & reviews | Consumables forecasting and purchase suggestions; review ingestion with topic and sentiment tagging | 🚧 |
-| **Explain this chart** | A button next to every chart: computes facts (deltas, anomalies, drivers), turns them into a narrative with an LLM and verifies every number against the facts | 🚧 |
+| **Explain this chart** | A link above every chart opens an explanation of exactly what the chart shows under the current filters: a deterministic facts engine (changes, trends, anomaly episodes, level shifts, divergence between series, share shifts, gaps to last year and to targets), an LLM narrative with hypotheses and next steps, and an automatic check of every number against the facts. Works without an LLM, too (facts-only mode). | ✅ |
 
 ## Dashboards
 
@@ -53,6 +53,17 @@ lets every chart **explain itself** in plain language.
 ![Website & Booking Funnel dashboard](docs/images/website-dashboard.png)
 
 *Website & Booking Funnel: the same outage seen from the website - mobile payment success collapses and `gateway_timeout` errors spike. Tracking coverage fell below the alert threshold after a cookie-banner redesign (a second injected anomaly), and first- vs. last-touch attribution shows how last-click reporting undervalues metasearch.*
+
+### ✨ Explain this chart
+
+<img src="docs/images/explain-page.png" alt="Explanation of the payment success chart" width="720">
+
+*One click on "Explain this chart" above the payment chart: the facts engine finds the drop and that it only affects mobile; the model turns that into a headline, hypotheses to verify and next steps. All numbers are checked against the chart's data, and the facts used are listed underneath.*
+
+Evaluated against the injected anomalies (`make evaluate`, [report](docs/insight-evaluation.md)):
+the facts engine and the narrative both name the affected series and time window in **4 of 4**
+anomaly charts, **all** narratives pass the number check, and the control charts raise **no**
+false alarms.
 
 ## Architecture
 
@@ -80,7 +91,8 @@ flowchart LR
     end
 
     MB["Metabase<br/>dashboards as code"]
-    EXP["Insight service<br/>explain this chart"]
+    EXP["Insight service<br/>facts engine + number check"]
+    LLM["LLM<br/>OpenAI-compatible API"]
 
     SIM -. simulated activity .-> PMS
     SIM -. simulated visits .-> COL
@@ -95,12 +107,14 @@ flowchart LR
     WING --> AUDIT
     MARTS --> MB
     CORE --> MB
-    MB -- "✨ Explain" --> EXP
+    MB -- "✨ Explain (chart + filters)" --> EXP
+    EXP -- "same query via API" --> MB
+    EXP -- "facts only" --> LLM
 ```
 
 All services run with Docker Compose: PostgreSQL 17 (warehouse, source system and application
-databases with least-privilege roles), Airflow 3.3 (LocalExecutor), Metabase 0.64, and two small
-FastAPI services - the demo hotel website and the event collector.
+databases with least-privilege roles), Airflow 3.3 (LocalExecutor), Metabase 0.64, and three small
+FastAPI services - the demo hotel website, the event collector and the insight service.
 
 ## Data pipeline workflow
 
@@ -132,6 +146,26 @@ FastAPI services - the demo hotel website and the event collector.
    inactivity rule), then the web marts join sessions with PMS reservations for attribution and
    tracking coverage.
 
+**Explaining a chart** happens on demand:
+
+1. **Link** — every chart has a text card above it whose link carries the dashboard's current
+   filter values (Metabase fills them in display form, e.g. "Previous 12 weeks"; the service
+   parses them back to raw filter values).
+2. **Query** — the insight service runs the chart's own query through the Metabase API with a
+   non-admin service account, so the explanation sees exactly what the viewer sees.
+3. **Facts** — a deterministic engine computes the facts, in the chart's own number formats.
+   Anomalies are deviations from the local level measured in units of the series' week-to-week
+   noise; level shifts must explain the data better than a trend; targets and last-year gaps
+   are compared in code, never by the model.
+4. **Narrative** — an OpenAI-compatible model (default: `deepseek-v4-pro`) writes headline,
+   observations with fact references, hypotheses with confidence and next steps, using the chart's
+   intent and a KPI glossary as context. Only aggregated chart data is sent.
+5. **Verify** — every number in the answer must match a fact at the precision it is written
+   with (%, pp, €, thousands, German and Chinese formats); otherwise the model gets one retry
+   with feedback, after which unverified numbers are flagged on the page.
+6. **Cache and learn** — answers are cached per chart, filters, data version, model and
+   language; requests and 👍/👎 feedback are stored in schema `insight`.
+
 | DAG | Schedule | Purpose |
 |---|---|---|
 | `sim_pms_source` | hourly | Advance the simulated PMS to the current time |
@@ -150,6 +184,7 @@ FastAPI services - the demo hotel website and the event collector.
 | `core` | `dim_date`, `dim_hotel`, `dim_room_type`, `dim_channel`, `fct_reservation`, `fct_room_night`, `fct_web_event`, `fct_web_session` | dimensions upserted; facts incremental per changed reservation / visitor |
 | `marts` | `hotel_daily_kpi`, `channel_daily`, `channel_bookings_daily`, `booking_pace`, `web_funnel_daily`, `web_payment_errors_daily`, `web_attribution`, `tracking_coverage_daily` | full rebuild in one transaction |
 | `audit` | schema migrations, load log, loaded-file manifest, data-quality results | append-only |
+| `insight` | explanation cache, requests, feedback | written by the insight service only |
 
 KPI definitions follow hotel industry conventions: **Occupancy** = rooms sold / rooms
 available, **ADR** = room revenue / rooms sold, **RevPAR** = room revenue / rooms available,
@@ -165,12 +200,23 @@ make env   # create .env with freshly generated secrets
 make up    # build and start everything; first start seeds data and provisions dashboards
 ```
 
+To get AI-written explanations, put an OpenAI-compatible endpoint into `.env` (OpenAI,
+DeepSeek, OpenCode, or a local Ollama/vLLM server) and run `make up` again; without a key the
+explanations are generated from the facts alone:
+
+```bash
+LLM_BASE_URL=https://opencode.ai/zen/v1
+LLM_API_KEY=...
+LLM_MODEL=deepseek-v4-pro
+```
+
 | Service | URL | Credentials |
 |---|---|---|
 | Metabase | http://localhost:3001 | `MB_ADMIN_EMAIL` / `MB_ADMIN_PASSWORD` from `.env` |
 | Airflow | http://localhost:8081 | none (local demo mode) |
 | Demo hotel website | http://localhost:8030 | - |
 | Event collector | http://localhost:8010 | - |
+| Insight service | http://localhost:8020 | opened from the dashboards |
 | PostgreSQL | `localhost:5433` | roles and passwords in `.env` |
 
 **Try the whole path yourself:** book a room on the demo website (accept analytics cookies;
@@ -190,6 +236,7 @@ Useful commands:
 make help        # list all targets
 make ps          # service status
 make psql        # psql session on the warehouse
+make evaluate    # score the explanations against the injected anomalies
 make down        # stop (data is kept)
 make clean       # stop and delete all data volumes
 ```
@@ -203,8 +250,9 @@ make clean       # stop and delete all data volumes
 │   ├── simulator/           #   PMS and website-traffic simulators, injected anomalies
 │   ├── tracking/            #   event contract, collector service, tracker.js
 │   ├── website/             #   demo hotel website and booking engine
+│   ├── insight/             #   "Explain this chart": facts engine, narrative, number check
 │   ├── pipelines/           #   extraction and file-loading helpers used by DAGs
-│   ├── metabase/            #   dashboards-as-code provisioning
+│   ├── metabase/            #   API client and dashboards-as-code provisioning
 │   ├── landing.py           #   landing-zone files (swap point for object storage)
 │   ├── migrate.py           #   checksum-verified warehouse migrations
 │   └── quality.py           #   data-quality runner
@@ -212,8 +260,8 @@ make clean       # stop and delete all data volumes
 │   ├── migrations/          # V###__*.sql schema migrations
 │   ├── sql/                 # transformations per layer (staging, core, marts)
 │   └── tests/               # data-quality checks per domain and layer
-├── bi/metabase/             # dashboard and question definitions (YAML + SQL)
-├── docs/                    # tracking plan (generated from the contract), images
+├── bi/metabase/             # dashboards (YAML + SQL), chart intents, KPI glossary
+├── docs/                    # tracking plan (generated), explanation evaluation, images
 ├── infra/                   # Dockerfile and database initialisation
 ├── tests/                   # unit tests and DAG integrity tests
 └── docker-compose.yml
@@ -232,8 +280,9 @@ make clean       # stop and delete all data volumes
 |---|---|
 | `make setup` | `uv sync` and pre-commit hook installation |
 | `make lint` | ruff and sqlfluff |
-| `make test` | unit tests (simulator, migration runner, quality framework) |
+| `make test` | unit tests (simulators, tracking, facts engine, number check, provisioning, ...) |
 | `make test-dags` | DAG integrity tests inside the Airflow image |
+| `make evaluate` | detection rate of the explanations on the injected anomalies (needs the stack) |
 
 ## Data sources and licence notes
 

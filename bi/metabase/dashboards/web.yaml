@@ -29,6 +29,8 @@ sections:
     cards:
       - name: Tracked visits
         sql: web/sessions.sql
+        explain:
+          intent: How much tracked traffic did the website get?
         display: scalar
         position: [1, 0, 6, 3]
         description: Visits of people who accepted analytics cookies (bots excluded).
@@ -39,6 +41,9 @@ sections:
 
       - name: Conversion rate
         sql: web/conversion_rate.sql
+        explain:
+          intent: How well does the website turn visits into bookings?
+          target: {value: 0.025, label: typical hotel-website conversion}
         display: scalar
         position: [1, 6, 6, 3]
         description: Share of tracked visits that ended with a booking.
@@ -51,6 +56,9 @@ sections:
 
       - name: Payment success rate
         sql: web/payment_success_rate.sql
+        explain:
+          intent: Does the checkout work? Failed payments are lost direct bookings.
+          target: {value: 0.90, label: benchmark}
         display: scalar
         position: [1, 12, 6, 3]
         description: Share of visits with a payment attempt that ended with a booking.
@@ -63,6 +71,9 @@ sections:
 
       - name: Tracking coverage
         sql: web/tracking_coverage.sql
+        explain:
+          intent: Can we trust the web numbers? Share of real website bookings the tracker saw.
+          target: {value: 0.60, label: alert threshold}
         display: scalar
         position: [1, 18, 6, 3]
         description: Share of the PMS's website bookings that the tracker saw (consent, ad blockers).
@@ -73,6 +84,8 @@ sections:
 
       - name: Booking funnel
         sql: web/booking_funnel.sql
+        explain:
+          intent: Where do website visitors drop out of the booking flow?
         display: funnel
         position: [4, 0, 12, 7]
         description: Visits reaching each step of the booking flow (closed funnel).
@@ -86,6 +99,8 @@ sections:
 
       - name: Payment success rate by device
         sql: web/payment_success_by_device.sql
+        explain:
+          intent: Is the checkout broken on a specific device type?
         display: line
         position: [4, 12, 12, 7]
         description: >-
@@ -105,6 +120,8 @@ sections:
 
       - name: Failed payments by error code
         sql: web/payment_errors_weekly.sql
+        explain:
+          intent: Why do payments fail - guest-side declines or technical errors?
         display: bar
         position: [11, 0, 12, 6]
         description: Failed payment attempts per week, split by the error the payment provider returned.
@@ -120,6 +137,8 @@ sections:
 
       - name: Conversion rate by traffic channel
         sql: web/conversion_by_channel.sql
+        explain:
+          intent: Which marketing channels bring visitors who actually book?
         display: row
         position: [11, 12, 12, 6]
         description: Share of tracked visits that booked, per traffic channel.
@@ -141,6 +160,8 @@ sections:
     cards:
       - name: Visits by traffic channel
         sql: web/sessions_by_channel_weekly.sql
+        explain:
+          intent: Where does website traffic come from, and is any channel changing?
         display: bar
         position: [18, 0, 12, 6]
         description: Tracked visits per week and traffic channel.
@@ -157,6 +178,8 @@ sections:
 
       - name: Bookings by channel - first vs. last touch
         sql: web/attribution_first_vs_last.sql
+        explain:
+          intent: Which channels start the booking journey vs. close it? Last-click reporting undervalues journey starters.
         display: bar
         position: [18, 12, 12, 6]
         description: >-
@@ -186,6 +209,8 @@ sections:
     cards:
       - name: Tracking coverage by week
         sql: web/tracking_coverage_weekly.sql
+        explain:
+          intent: Has the share of bookings visible to web analytics changed, and since when?
         display: line
         position: [25, 8, 16, 6]
         description: Share of the PMS's website bookings that the tracker saw. Below 60 % triggers a data-quality warning.

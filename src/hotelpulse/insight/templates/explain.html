@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Explain this chart - HotelPulse</title>
+  <link rel="stylesheet" href="/static/insight.css">
+</head>
+<body>
+  <header class="bar">
+    <span class="brand">✨ Explain this chart</span>
+    <nav class="langs" aria-label="Language">
+      {% for code, name in languages.items() %}
+      <button type="button" data-lang="{{ code }}">{{ {"en": "English", "de": "Deutsch", "zh": "中文"}[code] }}</button>
+      {% endfor %}
+    </nav>
+  </header>
+
+  <main>
+    <section id="loading" class="card loading">
+      <div class="spinner"></div>
+      <p>Reading the chart, computing facts and writing the explanation…</p>
+    </section>
+
+    <section id="error" class="card error" hidden></section>
+
+    <article id="result" hidden>
+      <p class="eyebrow" id="dashboard"></p>
+      <h1 id="title"></h1>
+      <p class="filters" id="filters"></p>
+
+      <section class="card headline">
+        <p id="headline"></p>
+        <p id="badge" class="badge"></p>
+      </section>
+
+      <section class="card">
+        <h2>What the chart shows</h2>
+        <ul id="observations" class="list"></ul>
+      </section>
+
+      <div class="grid">
+        <section class="card" id="causes-card">
+          <h2>Possible causes <span class="muted">- hypotheses to verify</span></h2>
+          <ul id="causes" class="list"></ul>
+        </section>
+        <section class="card">
+          <h2>Recommended next steps</h2>
+          <ol id="actions" class="list"></ol>
+        </section>
+      </div>
+
+      <section class="card caveats" id="caveats-card" hidden>
+        <h2>Caveats</h2>
+        <ul id="caveats" class="list"></ul>
+      </section>
+
+      <details class="card">
+        <summary>Facts used - computed from the chart's data before any AI is involved</summary>
+        <table class="facts"><tbody id="facts"></tbody></table>
+      </details>
+
+      <footer class="meta">
+        <span id="meta"></span>
+        <span class="feedback">Was this helpful?
+          <button type="button" data-helpful="true" aria-label="Helpful">👍</button>
+          <button type="button" data-helpful="false" aria-label="Not helpful">👎</button>
+          <span id="thanks" hidden>Thanks!</span>
+        </span>
+      </footer>
+    </article>
+  </main>
+
+  <script src="/static/explain.js"></script>
+</body>
+</html>
