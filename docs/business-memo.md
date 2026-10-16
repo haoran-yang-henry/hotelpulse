@@ -1,8 +1,12 @@
+---
+title: Business memo
+---
+
 # Monday review memo: four findings and what they are worth
 
-**To:** General managers, HotelPulse City Lisbon and HotelPulse Resort Algarve
-**From:** Data team
-**Data as of:** 16 October 2026, last 12 months unless stated otherwise
+- **To:** General managers, HotelPulse City Lisbon and HotelPulse Resort Algarve
+- **From:** Data team
+- **Data as of:** 16 October 2026, last 12 months unless stated otherwise
 
 > All figures come from the HotelPulse warehouse. The bookings are the public *Hotel Booking
 > Demand* dataset, replayed as a live PMS. The four problems below were **injected into the
