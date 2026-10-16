@@ -93,6 +93,14 @@ FRESHNESS_RULES = (
         "Web marts", "SELECT max(built_at) FROM marts.web_funnel_daily", timedelta(hours=3),
         "warn",
     ),
+    FreshnessRule(
+        "Consumables (staging)", "SELECT max(_loaded_at) FROM staging.inventory_usage",
+        timedelta(hours=26),
+    ),
+    FreshnessRule(
+        "Operations marts", "SELECT max(built_at) FROM marts.consumables_daily",
+        timedelta(hours=26), "warn",
+    ),
 )  # fmt: skip
 
 
@@ -167,7 +175,7 @@ def pending_file_alerts(
 ) -> list[Alert]:
     """Landing files still not loaded after `max_age` (ingestion stuck or failing)."""
     alerts = []
-    for dataset in files.WEB_DATASETS:
+    for dataset in files.ALL_DATASETS:
         stuck = [
             key
             for key, path in files.pending_files(conn, landing_root, dataset, limit=10_000)
