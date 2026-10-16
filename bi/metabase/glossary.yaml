@@ -65,3 +65,27 @@ attribution:
     = channel of the visit in which they booked. Last-touch reporting over-credits direct and
     brand search and under-credits channels that start the journey (metasearch, social,
     referral).
+consumables:
+  match: [consumables, cost per occupied room, usage per room night]
+  text: >-
+    Consumables = guest-driven operating supplies: towels laundered (EUR 0.85 each), toiletry
+    kits, coffee capsules, water bottles and breakfast covers (EUR 6.50). Usage is measured per
+    occupied room night (breakfast covers per breakfast guest), so occupancy swings cancel out.
+    Typical: ~1.8 towels, 1 toiletry kit, ~2.2 capsules and ~1.5 bottles per room night. A
+    lasting change in a usage rate points to a process, supplier or waste issue, not demand.
+    CPOR = consumables cost per occupied room; breakfast is the biggest cost driver.
+reviews:
+  match: [review score, reviews]
+  text: >-
+    Review score = average guest rating on a 1-10 scale (Booking.com, Google, Tripadvisor).
+    Group target 8.5. About one in eight stays leaves a review, a few days after check-out, so
+    weekly averages move by a few tenths from noise alone. Each negative aspect mentioned
+    costs roughly 1.5 points.
+complaints:
+  match: [complaint, topic]
+  text: >-
+    Topics and sentiment (positive/negative per aspect, e.g. breakfast, cleanliness, noise)
+    come from the review-management tool. Reviews are linked to the guest's stay in the PMS
+    by confirmation code, so complaints can be compared with how full the hotel was during
+    the stay. A complaint rate that rises with occupancy points to a capacity problem (staff,
+    seats, buffet replenishment), not to product quality.
