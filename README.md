@@ -74,6 +74,15 @@ the facts engine and the narrative both identify the affected series - and its t
 category - in **6 of 6** anomaly charts across the website, revenue and operations dashboards,
 **all** narratives pass the number check, and the control charts raise **no** false alarms.
 
+### What the data shows
+
+The [business memo](docs/business-memo.md) turns the dashboards into four findings with euro
+estimates: a mobile payment outage that sent direct bookers to Booking.com (≈ €3.5k extra
+commission in two weeks, ≈ €90k a year if unnoticed), web analytics seeing only half the
+bookings after a cookie-banner change, a laundry-supplier change costing ≈ €25k a year, and
+breakfast complaints nearly tripling on full-house nights. A [demo script](docs/demo-script.md)
+walks through the platform in eight minutes.
+
 ## Architecture
 
 ```mermaid
@@ -297,7 +306,7 @@ make clean       # stop and delete all data volumes
 │   ├── sql/                 # transformations per layer (staging, core, marts)
 │   └── tests/               # data-quality checks per domain and layer
 ├── bi/metabase/             # dashboards (YAML + SQL), chart intents, KPI glossary
-├── docs/                    # tracking plan (generated), explanation evaluation, images
+├── docs/                    # business memo, demo script, tracking plan, evaluation, images
 ├── infra/                   # Dockerfile and database initialisation
 ├── tests/                   # unit tests and DAG integrity tests
 └── docker-compose.yml
