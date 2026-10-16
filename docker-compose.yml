@@ -258,11 +258,11 @@ services:
       MB_URL: http://metabase:3000
       MB_INSIGHT_EMAIL: insight.service@example.com
       MB_INSIGHT_PASSWORD: ${MB_INSIGHT_PASSWORD}
-      LLM_BASE_URL: ${LLM_BASE_URL:-https://opencode.ai/zen/v1}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://opencode.ai/zen/go/v1}
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-deepseek-v4-pro}
-      LLM_REASONING_EFFORT: ${LLM_REASONING_EFFORT:-}
-      LLM_SESSION_HEADER: ${LLM_SESSION_HEADER:-}
+      LLM_REASONING_EFFORT: ${LLM_REASONING_EFFORT:-none}
+      LLM_SESSION_HEADER: ${LLM_SESSION_HEADER:-x-opencode-session}
     ports:
       - "${INSIGHT_PORT:-8020}:8000"
     healthcheck:
