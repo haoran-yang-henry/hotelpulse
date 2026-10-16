@@ -46,6 +46,9 @@ x-airflow-env: &airflow-env
   AIRFLOW_CONN_DWH: '{"conn_type": "postgres", "host": "postgres", "port": 5432, "schema": "dwh", "login": "dwh_etl", "password": "${DWH_ETL_PASSWORD}"}'
   # "secret" in the name makes Airflow mask the value in logs and rendered templates
   AIRFLOW_VAR_PII_HASH_SECRET: ${PII_HASH_SALT}
+  # observability (ADR-0018): the watchdog reads DAG runs from the API; alerts may go to a webhook
+  AIRFLOW_API_URL: http://airflow-apiserver:8080
+  ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
 
 x-airflow-common: &airflow-common
   <<: *project-image

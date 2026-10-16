@@ -386,6 +386,17 @@ class Analysis:
         """``breakdown``: the series split one metric by category (so totals and shares make
         sense); otherwise they are different metrics on the same axis."""
         all_dates = sorted({d for pts in series.values() for d, _ in pts})
+        if len(all_dates) == 1:  # one period only: state the values
+            for name, points in series.items():
+                f = Fmt()
+                self.add(
+                    "value",
+                    f"{name}: {f.val(points[0][1], style)} on {self.label(points[0][0], False)}.",
+                    f,
+                    2 + (abs(points[0][1]) > 0),
+                    series=name,
+                )
+            return
         gaps = [(b - a).days for a, b in pairwise(all_dates)]
         weekly = bool(gaps) and statistics.median(gaps) == 7
         unit = "week" if weekly else "period"
@@ -668,7 +679,13 @@ class Analysis:
         for row in rows:
             table[str(row[cat])][str(row[group])] = row[metric.index] or 0
         groups = sorted({g for d in table.values() for g in d})
-        if len(groups) != 2:
+        if len(groups) != 2:  # e.g. runs by DAG and state: rank categories, show the split
+            totals = {c: sum(d.values()) for c, d in table.items()}
+            self.categories(list(totals), metric, list(totals.values()), is_additive(metric))
+            for category, d in sorted(table.items(), key=lambda x: -sum(x[1].values()))[:5]:
+                f = Fmt()
+                parts = ", ".join(f"{g} {f.val(v, metric.style)}" for g, v in sorted(d.items()))
+                self.add("breakdown", f"{category}: {parts}.", f, 1.5, series=category)
             return
         g1, g2 = groups
         diffs = []
@@ -816,6 +833,16 @@ def extract(card: dict, result: dict, spec: dict[str, Any] | None = None) -> Fac
             labels = [str(r[text_cols[0].index]) for r in rows]
             for metric in number_cols:
                 a.categories(labels, metric, [r[metric.index] for r in rows], is_additive(metric))
+    if not a.facts:  # rows but no pattern the engine knows: describe them, never "no data"
+        for row in rows[:5]:
+            f = Fmt()
+            cells = [
+                f"{c.title} {f.val(row[c.index], c.style)}"
+                if c.kind == "number" and row[c.index] is not None
+                else f"{c.title} {row[c.index]}"
+                for c in cols
+            ]
+            a.add("row", "; ".join(cells) + ".", f, 1)
     return a.sheet()
 
 

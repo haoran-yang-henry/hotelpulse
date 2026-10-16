@@ -36,6 +36,7 @@ lets every chart **explain itself** in plain language.
 | Layered warehouse | `raw → staging → core → marts` in plain PostgreSQL SQL: append-only raw change log, `MERGE`-based staging, star schema, dashboard-ready marts | ✅ |
 | Orchestration | Airflow 3 DAGs with incremental, idempotent loads (data-interval windows with look-back), asset-driven downstream scheduling, backfill support | ✅ |
 | Data quality as code | SQL checks that return violating rows; results persisted to `audit.dq_results`; error-level failures stop the pipeline | ✅ |
+| Observability & alerting | Data Platform Health dashboard (freshness SLAs, DAG success rates and durations, loads, data-quality trends, alerts, explain-feature usage); a failure callback alerts immediately, a watchdog DAG checks freshness, stuck landing files and data-quality warnings; optional Slack-compatible webhook | ✅ |
 | Revenue analytics | Occupancy, ADR, RevPAR, channel mix and commission cost, booking pace (on-the-books vs. same time last year) | ✅ |
 | Dashboards as code | Metabase questions and dashboards defined in YAML + SQL and provisioned through the Metabase API | ✅ |
 | Privacy by design | Personal data stops at staging (salted hashes); BI uses a read-only role limited to modelled schemas | ✅ |
@@ -53,6 +54,10 @@ lets every chart **explain itself** in plain language.
 ![Website & Booking Funnel dashboard](docs/images/website-dashboard.png)
 
 *Website & Booking Funnel: the same outage seen from the website - mobile payment success collapses and `gateway_timeout` errors spike. Tracking coverage fell below the alert threshold after a cookie-banner redesign (a second injected anomaly), and first- vs. last-touch attribution shows how last-click reporting undervalues metasearch.*
+
+![Data Platform Health dashboard](docs/images/health-dashboard.png)
+
+*Data Platform Health: freshness against SLAs, pipeline success rates and durations, rows loaded, data-quality trends and alerts (here: two alerts from the fire drill and the data-quality warnings the source data really has).*
 
 ### ✨ Explain this chart
 
@@ -174,6 +179,14 @@ FastAPI services - the demo hotel website, the event collector and the insight s
 | `sim_web_traffic` | every 15 minutes | Send simulated visits, consistent with the PMS, to the collector |
 | `web_events_ingest` | hourly | Landing files → raw → staging → sessions, with quality checks |
 | `web_marts_build` | on `core.fct_web_session` or `core.fct_room_night` | Funnel, payment errors, attribution, tracking coverage |
+| `platform_health` | every 15 minutes | Watchdog: mirror DAG runs, check dataset freshness SLAs, stuck landing files and data-quality warnings, raise alerts |
+| `ops_alert_drill` | manual | Fails on purpose to test the alerting path end to end |
+
+**When something goes wrong**, every task that fails after its last retry raises an error
+alert immediately (failure callback); the watchdog adds alerts for stale datasets, landing files
+that are not being loaded and new data-quality warnings. Alerts land in `audit.alerts` (deduplicated
+for six hours), on the *Data Platform Health* dashboard and - if `ALERT_WEBHOOK_URL` is set - in a
+Slack-compatible channel.
 
 ## Data model
 
@@ -183,7 +196,7 @@ FastAPI services - the demo hotel website, the event collector and the insight s
 | `staging` | One current row per entity, cleaned and typed, `dq_issues` flags, no PII; unique web events with corrected timestamps | `MERGE` on natural key; first delivery wins |
 | `core` | `dim_date`, `dim_hotel`, `dim_room_type`, `dim_channel`, `fct_reservation`, `fct_room_night`, `fct_web_event`, `fct_web_session` | dimensions upserted; facts incremental per changed reservation / visitor |
 | `marts` | `hotel_daily_kpi`, `channel_daily`, `channel_bookings_daily`, `booking_pace`, `web_funnel_daily`, `web_payment_errors_daily`, `web_attribution`, `tracking_coverage_daily` | full rebuild in one transaction |
-| `audit` | schema migrations, load log, loaded-file manifest, data-quality results | append-only |
+| `audit` | schema migrations, load log, loaded-file manifest, data-quality results, alerts, DAG run history, freshness checks | append-only |
 | `insight` | explanation cache, requests, feedback | written by the insight service only |
 
 KPI definitions follow hotel industry conventions: **Occupancy** = rooms sold / rooms
@@ -236,6 +249,7 @@ Useful commands:
 make help        # list all targets
 make ps          # service status
 make psql        # psql session on the warehouse
+make e2e         # end-to-end tests against the running stack
 make evaluate    # score the explanations against the injected anomalies
 make down        # stop (data is kept)
 make clean       # stop and delete all data volumes
@@ -282,6 +296,8 @@ make clean       # stop and delete all data volumes
 | `make lint` | ruff and sqlfluff |
 | `make test` | unit tests (simulators, tracking, facts engine, number check, provisioning, ...) |
 | `make test-dags` | DAG integrity tests inside the Airflow image |
+| `make e2e` | end-to-end tests against the running stack: health, all dashboard cards, website booking and tracking events through to the warehouse, explanations, alerting, an idempotent backfill |
+| `make e2e-clean` | the same from scratch: wipe, rebuild, wait for the first pipeline runs, test |
 | `make evaluate` | detection rate of the explanations on the injected anomalies (needs the stack) |
 
 ## Data sources and licence notes

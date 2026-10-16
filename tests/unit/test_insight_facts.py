@@ -135,3 +135,55 @@ def test_no_rows():
     card, result = weekly_result({"x": [1.0]})
     result["data"]["rows"] = []
     assert facts.extract(card, result).facts[0].text.startswith("No data")
+
+
+def test_single_period_and_multi_group_breakdowns_still_produce_facts():
+    cols = [
+        {"name": "day", "base_type": "type/Date"},
+        {"name": "dataset", "base_type": "type/Text"},
+        {"name": "rows_loaded", "base_type": "type/BigInteger"},
+    ]
+    card = {
+        "name": "Rows loaded",
+        "display": "bar",
+        "visualization_settings": {
+            "graph.dimensions": ["day", "dataset"],
+            "graph.metrics": ["rows_loaded"],
+        },
+    }
+    rows = [["2026-10-16", "pms.reservations", 80000], ["2026-10-16", "landing.web_events", 150000]]
+    sheet = facts.extract(card, {"data": {"cols": cols, "rows": rows}})
+    assert any("150,000" in f.text for f in sheet.facts)
+
+    cols = [
+        {"name": "dag_id", "base_type": "type/Text"},
+        {"name": "state", "base_type": "type/Text"},
+        {"name": "runs", "base_type": "type/BigInteger"},
+    ]
+    card = {
+        "name": "Runs",
+        "display": "bar",
+        "visualization_settings": {
+            "graph.dimensions": ["dag_id", "state"],
+            "graph.metrics": ["runs"],
+        },
+    }
+    rows = [
+        ["pms_ingest", "success", 4],
+        ["ops_alert_drill", "failed", 2],
+        ["sim_pms_source", "success", 9],
+        ["sim_pms_source", "running", 1],
+    ]
+    sheet = facts.extract(card, {"data": {"cols": cols, "rows": rows}})
+    assert sheet.facts[0].kind == "ranking" and "sim_pms_source" in sheet.facts[0].text
+    assert any(f.kind == "breakdown" for f in sheet.facts)
+
+
+def test_unknown_shapes_fall_back_to_describing_rows():
+    cols = [
+        {"name": "dataset", "base_type": "type/Text"},
+        {"name": "status", "base_type": "type/Text"},
+    ]
+    card = {"name": "Freshness", "display": "table", "visualization_settings": {}}
+    sheet = facts.extract(card, {"data": {"cols": cols, "rows": [["Web marts", "ok"]]}})
+    assert sheet.facts[0].kind == "row" and "Web marts" in sheet.facts[0].text

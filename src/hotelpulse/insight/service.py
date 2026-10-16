@@ -20,7 +20,7 @@ from hotelpulse.metabase.client import MetabaseClient, MetabaseError
 log = logging.getLogger("hotelpulse.insight")
 
 # bump when facts or the response format change: cached explanations are keyed on it
-FACTS_VERSION = "2026-10-16.4"
+FACTS_VERSION = "2026-10-16.6"
 DASHBOARD_TTL_S = 60
 
 
@@ -56,6 +56,11 @@ def resolve_parameters(
         else:
             raw = filters.to_raw(param["type"], values)
             shown = ", ".join(v for v in values if not filters.is_unset(v)) or None
+            default = param.get("default")
+            if isinstance(raw, str) and isinstance(default, str) and default == raw + "~":
+                # "Previous 7 days" is displayed the same with or without the current day;
+                # when it matches the dashboard default, the default's exact value applies
+                raw = default
         if raw in (None, [], ""):
             described.append(f"{param['name']}: all")
             continue

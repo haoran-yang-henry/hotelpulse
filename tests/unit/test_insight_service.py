@@ -29,6 +29,14 @@ def test_display_values_from_the_link_become_query_parameters():
     assert described == ["Period: Previous 26 weeks", "Device: mobile and tablet"]
 
 
+def test_display_value_matching_an_inclusive_default_keeps_the_current_period():
+    dashboard = {"parameters": [{**DASHBOARD["parameters"][0], "default": "past7days~"}]}
+    params, _ = resolve_parameters(dashboard, DASHCARD, {"period": ["Previous 7 days"]})
+    assert params[0]["value"] == "past7days~"
+    params, _ = resolve_parameters(dashboard, DASHCARD, {"period": ["Previous 30 days"]})
+    assert params[0]["value"] == "past30days"
+
+
 def test_absent_filter_uses_default_and_cleared_filter_is_all():
     params, described = resolve_parameters(DASHBOARD, DASHCARD, {"device": ["{{device}}"]})
     assert params == [
@@ -47,6 +55,7 @@ def test_absent_filter_uses_default_and_cleared_filter_is_all():
 def test_explain_bars_sit_above_every_chart_without_overlap():
     for spec in specs.load_dashboards():
         names = [c["name"] for c in specs.iter_cards(spec)]
+        explainable = [c["name"] for c in specs.iter_cards(spec) if provision.has_explain_link(c)]
         cards = provision.dashcards(spec, {n: i for i, n in enumerate(names, 100)}, 7, "http://i")
         occupied = set()
         for dc in cards:
@@ -60,9 +69,9 @@ def test_explain_bars_sit_above_every_chart_without_overlap():
         links = [
             dc
             for dc in cards
-            if "Explain this chart" in dc["visualization_settings"].get("text", "")
+            if f"[{provision.EXPLAIN_LABEL}](" in dc["visualization_settings"].get("text", "")
         ]
-        assert len(links) == len(names)
+        assert len(links) == len(explainable)
         for link in links:
             chart = next(
                 dc
