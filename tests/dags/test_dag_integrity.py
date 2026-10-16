@@ -17,6 +17,8 @@ EXPECTED = {
     "sim_web_traffic",
     "web_events_ingest",
     "web_marts_build",
+    "platform_health",
+    "ops_alert_drill",
 }
 
 
@@ -44,7 +46,9 @@ def test_dag_conventions(dagbag, dag_id):
     assert dag.max_active_runs == 1
     for task in dag.tasks:
         assert task.owner == "data-engineering"
-        assert task.retries >= 1
+        assert task.on_failure_callback, "failures must raise an alert"
+        if dag_id != "ops_alert_drill":  # the drill fails on purpose, without retries
+            assert task.retries >= 1
 
 
 def test_pms_ingest_ends_with_quality_gate(dagbag):
