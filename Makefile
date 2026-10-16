@@ -2,7 +2,7 @@ SHELL := /bin/bash
 COMPOSE := docker compose
 .DEFAULT_GOAL := help
 
-.PHONY: help env setup up down clean ps logs psql lint fmt test test-dags dashboards evaluate trigger
+.PHONY: help env setup up down clean ps logs psql lint fmt test test-dags e2e e2e-clean dashboards evaluate trigger
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -52,6 +52,14 @@ test-dags: ## DAG integrity tests inside the Airflow image
 
 dashboards: ## Re-provision Metabase dashboards from bi/metabase
 	$(COMPOSE) run --rm --no-deps metabase-provision
+
+e2e: ## End-to-end tests against the running stack (make up first)
+	uv run --env-file .env pytest tests/e2e -v -p no:cacheprovider
+
+e2e-clean: ## Rebuild everything from scratch, wait for the pipelines, run the end-to-end tests
+	$(MAKE) clean
+	$(MAKE) up
+	uv run --env-file .env pytest tests/e2e -v -p no:cacheprovider --wait-for-pipelines
 
 evaluate: ## Score "Explain this chart" on the injected anomalies -> docs/insight-evaluation.md
 	uv run --env-file .env python -m hotelpulse.insight.evaluate
