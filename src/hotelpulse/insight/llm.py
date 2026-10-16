@@ -1,6 +1,6 @@
 """Minimal client for any OpenAI-compatible Chat Completions endpoint.
 
-Configured with ``LLM_BASE_URL``, ``LLM_API_KEY`` and ``LLM_MODEL`` - by default OpenCode
+Configured with ``LLM_BASE_URL``, ``LLM_API_KEY`` and ``LLM_MODEL`` - by default OpenCode Go
 serving ``deepseek-v4-pro``; OpenAI, DeepSeek or a local server (Ollama, vLLM) work the same.
 Optional: ``LLM_REASONING_EFFORT`` (e.g. ``none`` for fast answers from reasoning models) and
 ``LLM_SESSION_HEADER`` - the header OpenCode Go uses to route a session's requests together.
@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 import httpx
 
-DEFAULT_BASE_URL = "https://opencode.ai/zen/v1"
+DEFAULT_BASE_URL = "https://opencode.ai/zen/go/v1"
 DEFAULT_MODEL = "deepseek-v4-pro"
 
 
