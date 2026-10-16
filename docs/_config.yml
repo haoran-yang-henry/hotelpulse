@@ -1,0 +1,16 @@
+# GitHub Pages site, built from this folder (Settings > Pages: main, /docs).
+title: HotelPulse
+description: >-
+  An end-to-end data platform for hotel operations - with an "Explain this chart" button on
+  every dashboard chart.
+theme: minima
+header_pages:
+  - business-memo.md
+  - insight-evaluation.md
+  - tracking-plan.md
+exclude:
+  - demo-script.md  # presenter notes, kept in the repository only
+# Markdown pages keep their own "# Title" heading: use the plain layout, which does not repeat it.
+defaults:
+  - scope: {path: ""}
+    values: {layout: default}

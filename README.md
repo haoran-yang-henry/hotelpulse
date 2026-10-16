@@ -333,6 +333,7 @@ make clean       # stop and delete all data volumes
 
 ## Data sources and licence notes
 
+- Code: [MIT licence](LICENSE).
 - Booking data: Antonio, N., de Almeida, A., & Nunes, L. (2019). *Hotel booking demand
   datasets.* Data in Brief, 22, 41–49 (CC BY 4.0), mirrored by TidyTuesday. Dates are shifted;
   hotel names are fictional.
