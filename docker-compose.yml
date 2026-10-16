@@ -71,6 +71,7 @@ services:
       PMS_READER_PASSWORD: ${PMS_READER_PASSWORD}
       DWH_ETL_PASSWORD: ${DWH_ETL_PASSWORD}
       BI_READER_PASSWORD: ${BI_READER_PASSWORD}
+      INSIGHT_DB_PASSWORD: ${INSIGHT_DB_PASSWORD}
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./infra/postgres/initdb:/docker-entrypoint-initdb.d:ro
@@ -234,12 +235,43 @@ services:
       MB_ADMIN_EMAIL: ${MB_ADMIN_EMAIL}
       MB_ADMIN_PASSWORD: ${MB_ADMIN_PASSWORD}
       BI_READER_PASSWORD: ${BI_READER_PASSWORD}
+      MB_INSIGHT_EMAIL: insight.service@example.com
+      MB_INSIGHT_PASSWORD: ${MB_INSIGHT_PASSWORD}
+      INSIGHT_PUBLIC_URL: http://localhost:${INSIGHT_PORT:-8020}
     depends_on:
       metabase:
         condition: service_healthy
       bootstrap:
         condition: service_completed_successfully
     restart: "no"
+
+  # "Explain this chart": facts engine + LLM narrative, opened from links above each chart
+  insight:
+    <<: *project-image
+    entrypoint: ["python", "-m", "uvicorn", "--factory", "hotelpulse.insight.app:create_app",
+                 "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
+    environment:
+      HOTELPULSE_INSIGHT_DSN: postgresql://insight_app:${INSIGHT_DB_PASSWORD}@postgres:5432/dwh
+      MB_URL: http://metabase:3000
+      MB_INSIGHT_EMAIL: insight.service@example.com
+      MB_INSIGHT_PASSWORD: ${MB_INSIGHT_PASSWORD}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://opencode.ai/zen/v1}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-deepseek-v4-pro}
+      LLM_REASONING_EFFORT: ${LLM_REASONING_EFFORT:-}
+      LLM_SESSION_HEADER: ${LLM_SESSION_HEADER:-}
+    ports:
+      - "${INSIGHT_PORT:-8020}:8000"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "-s", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    depends_on:
+      metabase-provision:
+        condition: service_completed_successfully
+    mem_limit: 256m
+    restart: unless-stopped
 
 volumes:
   postgres-data:
