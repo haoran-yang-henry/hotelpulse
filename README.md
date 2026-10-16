@@ -42,7 +42,7 @@ lets every chart **explain itself** in plain language.
 | Privacy by design | Personal data stops at staging (salted hashes); BI uses a read-only role limited to modelled schemas | ✅ |
 | Website tracking | Demo booking site with a consent-first JavaScript tracker, an event collector that validates against a versioned contract and writes a gzip JSONL landing zone, exactly-once file ingestion, clock-skew correction, bot and duplicate filtering, per-visitor incremental sessionisation | ✅ |
 | Web analytics | Closed booking funnel by device and channel, payment errors, first- vs. last-touch attribution, and tracking coverage reconciled against the PMS | ✅ |
-| Operations & reviews | Consumables forecasting and purchase suggestions; review ingestion with topic and sentiment tagging | 🚧 |
+| Operations & guest experience | Daily consumables and review exports through the same exactly-once file loader; usage per occupied room night and cost per occupied room, a transparent 14-day purchase suggestion from rooms on the books, and reviews linked to the PMS stay to show how occupancy during the stay drives complaints | ✅ |
 | **Explain this chart** | A link above every chart opens an explanation of exactly what the chart shows under the current filters: a deterministic facts engine (changes, trends, anomaly episodes, level shifts, divergence between series, share shifts, gaps to last year and to targets), an LLM narrative with hypotheses and next steps, and an automatic check of every number against the facts. Works without an LLM, too (facts-only mode). | ✅ |
 
 ## Dashboards
@@ -55,6 +55,10 @@ lets every chart **explain itself** in plain language.
 
 *Website & Booking Funnel: the same outage seen from the website - mobile payment success collapses and `gateway_timeout` errors spike. Tracking coverage fell below the alert threshold after a cookie-banner redesign (a second injected anomaly), and first- vs. last-touch attribution shows how last-click reporting undervalues metasearch.*
 
+![Operations & Guest Experience dashboard](docs/images/operations-dashboard.png)
+
+*Operations & Guest Experience: consumables per occupied room night, so busy weeks do not look like waste - the resort's towels laundered per room night jumped by a quarter after a laundry-supplier change (injected), which the purchase suggestion flags before the next order. Reviews are linked to the guest's stay: when the hotel was 90 % full or more, breakfast complaints are more than twice as frequent (injected capacity problem).*
+
 ![Data Platform Health dashboard](docs/images/health-dashboard.png)
 
 *Data Platform Health: freshness against SLAs, pipeline success rates and durations, rows loaded, data-quality trends and alerts (here: two alerts from the fire drill and the data-quality warnings the source data really has).*
@@ -66,9 +70,9 @@ lets every chart **explain itself** in plain language.
 *One click on "Explain this chart" above the payment chart: the facts engine finds the drop and that it only affects mobile; the model turns that into a headline, hypotheses to verify and next steps. All numbers are checked against the chart's data, and the facts used are listed underneath.*
 
 Evaluated against the injected anomalies (`make evaluate`, [report](docs/insight-evaluation.md)):
-the facts engine and the narrative both name the affected series and time window in **4 of 4**
-anomaly charts, **all** narratives pass the number check, and the control charts raise **no**
-false alarms.
+the facts engine and the narrative both identify the affected series - and its time window or
+category - in **6 of 6** anomaly charts across the website, revenue and operations dashboards,
+**all** narratives pass the number check, and the control charts raise **no** false alarms.
 
 ## Architecture
 
@@ -79,15 +83,15 @@ flowchart LR
         WEB["Hotel website<br/>booking engine + tracker.js"]
         COL["Event collector<br/>FastAPI"]
         LZ[("Landing zone<br/>gzip JSONL")]
-        INV["Inventory<br/>CSV exports"]
-        REV["Reviews<br/>API"]
+        INV["Inventory system<br/>daily export"]
+        REV["Review tool<br/>daily export"]
     end
 
     subgraph airflow["Apache Airflow 3"]
-        SIM["sim_pms_source / sim_web_traffic"]
+        SIM["sim_pms_source / sim_web_traffic<br/>sim_operations"]
         ING["pms_ingest<br/>daily after night audit"]
-        WING["web_events_ingest<br/>hourly, file manifest"]
-        MART["marts_build / web_marts_build<br/>asset-triggered"]
+        WING["web_events_ingest / operations_ingest<br/>file manifest"]
+        MART["marts_build / web_marts_build<br/>operations_marts_build<br/>asset-triggered"]
     end
 
     subgraph dwh["PostgreSQL warehouse"]
@@ -101,12 +105,14 @@ flowchart LR
 
     SIM -. simulated activity .-> PMS
     SIM -. simulated visits .-> COL
+    SIM -. simulated exports .-> INV
+    SIM -. simulated exports .-> REV
     WEB -- bookings --> PMS
     WEB -- events --> COL --> LZ
     PMS --> ING --> RAW
     LZ --> WING --> RAW
-    INV -.-> RAW
-    REV -.-> RAW
+    INV --> LZ
+    REV --> LZ
     CORE --> MART --> MARTS
     ING --> AUDIT
     WING --> AUDIT
@@ -151,6 +157,18 @@ FastAPI services - the demo hotel website, the event collector and the insight s
    inactivity rule), then the web marts join sessions with PMS reservations for attribution and
    tracking coverage.
 
+**Operational exports** - consumables usage and guest reviews - arrive once a night as files:
+
+1. **Export** — the inventory system writes usage per hotel, day and item; the review tool
+   writes the day's reviews with rating, text and per-topic sentiment, plus the guest's
+   confirmation code. Both land in the landing zone in the same format as tracking events.
+2. **Load and stage** — `operations_ingest` (04:00) reuses the exactly-once file loader; a
+   re-exported day or an edited review replaces the earlier version.
+3. **Serve** — `operations_marts_build` runs on new exports *or* new revenue marts: usage is
+   related to rooms sold and breakfast guests from the PMS, reviews are linked to their stay
+   and the hotel's occupancy during it, and the purchase suggestion multiplies the last 28 days'
+   median usage rate by the room nights on the books for the next 14 nights (plus a buffer).
+
 **Explaining a chart** happens on demand:
 
 1. **Link** — every chart has a text card above it whose link carries the dashboard's current
@@ -179,6 +197,9 @@ FastAPI services - the demo hotel website, the event collector and the insight s
 | `sim_web_traffic` | every 15 minutes | Send simulated visits, consistent with the PMS, to the collector |
 | `web_events_ingest` | hourly | Landing files → raw → staging → sessions, with quality checks |
 | `web_marts_build` | on `core.fct_web_session` or `core.fct_room_night` | Funnel, payment errors, attribution, tracking coverage |
+| `sim_operations` | daily, 02:30 | Write yesterday's consumables and review exports, consistent with the PMS |
+| `operations_ingest` | daily, 04:00 | Export files → raw → staging, with quality checks |
+| `operations_marts_build` | on staged exports or revenue marts | Consumables per room night, reviews linked to stays, purchase suggestion |
 | `platform_health` | every 15 minutes | Watchdog: mirror DAG runs, check dataset freshness SLAs, stuck landing files and data-quality warnings, raise alerts |
 | `ops_alert_drill` | manual | Fails on purpose to test the alerting path end to end |
 
@@ -192,16 +213,17 @@ Slack-compatible channel.
 
 | Layer | Content | Load strategy |
 |---|---|---|
-| `raw` | Source rows as extracted, plus `_batch_id` and `_extracted_at`; tracking events as JSONB with their landing file | append-only (change log), idempotent per batch / file |
-| `staging` | One current row per entity, cleaned and typed, `dq_issues` flags, no PII; unique web events with corrected timestamps | `MERGE` on natural key; first delivery wins |
-| `core` | `dim_date`, `dim_hotel`, `dim_room_type`, `dim_channel`, `fct_reservation`, `fct_room_night`, `fct_web_event`, `fct_web_session` | dimensions upserted; facts incremental per changed reservation / visitor |
-| `marts` | `hotel_daily_kpi`, `channel_daily`, `channel_bookings_daily`, `booking_pace`, `web_funnel_daily`, `web_payment_errors_daily`, `web_attribution`, `tracking_coverage_daily` | full rebuild in one transaction |
+| `raw` | Source rows as extracted, plus `_batch_id` and `_extracted_at`; tracking events, consumables and reviews as JSONB with their landing file | append-only (change log), idempotent per batch / file |
+| `staging` | One current row per entity, cleaned and typed, `dq_issues` flags, no PII; unique web events with corrected timestamps; consumables per day and item, reviews | `MERGE` on natural key; first delivery wins |
+| `core` | `dim_date`, `dim_hotel`, `dim_room_type`, `dim_channel`, `dim_consumable`, `fct_reservation`, `fct_room_night`, `fct_web_event`, `fct_web_session` | dimensions upserted; facts incremental per changed reservation / visitor |
+| `marts` | `hotel_daily_kpi`, `channel_daily`, `channel_bookings_daily`, `booking_pace`, `web_funnel_daily`, `web_payment_errors_daily`, `web_attribution`, `tracking_coverage_daily`, `consumables_daily`, `guest_reviews`, `review_topics`, `purchase_suggestion` | full rebuild in one transaction |
 | `audit` | schema migrations, load log, loaded-file manifest, data-quality results, alerts, DAG run history, freshness checks | append-only |
 | `insight` | explanation cache, requests, feedback | written by the insight service only |
 
 KPI definitions follow hotel industry conventions: **Occupancy** = rooms sold / rooms
 available, **ADR** = room revenue / rooms sold, **RevPAR** = room revenue / rooms available,
-**STLY** = on-the-books "same time last year" (364 days back, weekday-aligned).
+**STLY** = on-the-books "same time last year" (364 days back, weekday-aligned), **CPOR** =
+consumables cost per occupied room.
 
 ## Getting started
 
@@ -261,7 +283,7 @@ make clean       # stop and delete all data volumes
 .
 ├── dags/                    # Airflow DAGs (orchestration only)
 ├── src/hotelpulse/          # Python package
-│   ├── simulator/           #   PMS and website-traffic simulators, injected anomalies
+│   ├── simulator/           #   PMS, website-traffic and operations simulators, anomalies
 │   ├── tracking/            #   event contract, collector service, tracker.js
 │   ├── website/             #   demo hotel website and booking engine
 │   ├── insight/             #   "Explain this chart": facts engine, narrative, number check
