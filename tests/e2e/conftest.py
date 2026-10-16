@@ -19,7 +19,14 @@ PORT = {
     "postgres": os.environ.get("POSTGRES_PORT", "5433"),
 }
 URL = {name: f"http://localhost:{port}" for name, port in PORT.items() if name != "postgres"}
-PIPELINES = ("pms_ingest", "marts_build", "web_events_ingest", "web_marts_build")
+PIPELINES = (
+    "pms_ingest",
+    "marts_build",
+    "web_events_ingest",
+    "web_marts_build",
+    "operations_ingest",
+    "operations_marts_build",
+)
 
 
 def pytest_addoption(parser):
