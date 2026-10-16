@@ -39,7 +39,7 @@ def card_specs(definitions: Path = DEFINITIONS_DIR) -> dict[tuple[str, str], Car
             dashboard=spec["name"],
             name=card["name"],
             description=" ".join(str(card.get("description", "")).split()),
-            explain=card.get("explain", {}),
+            explain=card.get("explain") or {},  # `explain: false` = no explain link
         )
         for spec in load_dashboards(definitions)
         for card in iter_cards(spec)

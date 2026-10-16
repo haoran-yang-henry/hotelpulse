@@ -121,7 +121,7 @@ class ProvisioningClient(MetabaseClient):
             "tunnel-enabled": False,
             "advanced-options": True,
             "schema-filters-type": "inclusion",
-            "schema-filters-patterns": "core,marts,audit",
+            "schema-filters-patterns": "core,marts,audit,insight",
         }
         existing = {db["name"]: db for db in self.get("/database")["data"]}
         if DATABASE_NAME in existing:
@@ -236,9 +236,15 @@ def explain_link(insight_url: str, dashboard_id: int, card_id: int, tags: list[s
     return f"[{EXPLAIN_LABEL}](<{insight_url}/explain?{query}>)"
 
 
+def has_explain_link(card: dict) -> bool:
+    return card.get("explain") is not False  # `explain: false` opts a card (e.g. a table) out
+
+
 def row_shift(spec: dict):
     """Each chart gets a one-row explain bar above it: rows below move down accordingly."""
-    starts = sorted({card["position"][0] for card in spec_files.iter_cards(spec)})
+    starts = sorted(
+        {card["position"][0] for card in spec_files.iter_cards(spec) if has_explain_link(card)}
+    )
     return lambda row: row + sum(1 for s in starts if s <= row)
 
 
@@ -287,25 +293,26 @@ def dashcards(
             row, col, width, height = card["position"]
             card_id = card_ids[card["name"]]
             tags = list(card.get("filters", {}))
-            add(
-                shift(row) - 1,
-                col,
-                width,
-                1,
-                visualization_settings=virtual_card(
-                    "text",
-                    explain_link(insight_url, dashboard_id, card_id, tags),
-                    **{
-                        "dashcard.background": False,
-                        "text.align_horizontal": "right",
-                        "text.align_vertical": "bottom",
-                    },
-                ),
-                parameter_mappings=[
-                    {"parameter_id": tag, "card_id": None, "target": ["text-tag", tag]}
-                    for tag in tags
-                ],
-            )
+            if has_explain_link(card):
+                add(
+                    shift(row) - 1,
+                    col,
+                    width,
+                    1,
+                    visualization_settings=virtual_card(
+                        "text",
+                        explain_link(insight_url, dashboard_id, card_id, tags),
+                        **{
+                            "dashcard.background": False,
+                            "text.align_horizontal": "right",
+                            "text.align_vertical": "bottom",
+                        },
+                    ),
+                    parameter_mappings=[
+                        {"parameter_id": tag, "card_id": None, "target": ["text-tag", tag]}
+                        for tag in tags
+                    ],
+                )
             add(
                 shift(row),
                 col,

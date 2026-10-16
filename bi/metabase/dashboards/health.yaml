@@ -1,0 +1,228 @@
+# Data Platform Health dashboard - see revenue.yaml for the format. Tables carry
+# `explain: false`: the explain feature is meant for charts.
+
+name: Data Platform Health
+description: >-
+  Is the data platform healthy? Pipeline runs, dataset freshness against SLAs, loads, data
+  quality, alerts - and how the "Explain this chart" feature is used.
+
+parameters:
+  - id: period
+    name: Period
+    slug: period
+    type: date/all-options
+    sectionId: date
+    default: past7days~  # include today: operations care about the current day
+
+sections:
+  - heading: Pipelines
+    position: [0, 0, 24, 1]
+    cards:
+      - name: Alerts in the last 24 hours
+        sql: health/open_alerts.sql
+        display: scalar
+        position: [1, 0, 6, 3]
+        description: Alerts raised by failed tasks, stale datasets, stuck landing files and data-quality warnings.
+        explain:
+          intent: Does anything need attention right now?
+
+      - name: Pipeline success rate
+        sql: health/pipeline_success_rate.sql
+        display: scalar
+        position: [1, 6, 6, 3]
+        description: Share of finished DAG runs that succeeded (the alert drill is excluded).
+        filters:
+          period: audit.dag_runs.start_date
+        columns:
+          success_rate: {number_style: percent, decimals: 1}
+        explain:
+          intent: Are the pipelines reliable?
+          target: {value: 0.99, label: reliability target}
+
+      - name: Stale datasets
+        sql: health/stale_datasets.sql
+        display: scalar
+        position: [1, 12, 6, 3]
+        description: Datasets whose latest update is older than their freshness SLA.
+        explain:
+          intent: Is any dashboard showing outdated data?
+
+      - name: Failing data-quality checks
+        sql: health/failing_checks.sql
+        display: scalar
+        position: [1, 18, 6, 3]
+        description: Checks whose latest result is a warning or failure.
+        explain:
+          intent: Can we trust the data quality?
+
+      - name: Dataset freshness
+        sql: health/dataset_freshness.sql
+        display: table
+        position: [4, 0, 12, 5]
+        description: Latest freshness check per dataset (every 15 minutes).
+        explain: false
+
+      - name: Runs by DAG and outcome
+        sql: health/runs_by_dag.sql
+        display: bar
+        position: [4, 12, 12, 5]
+        description: DAG runs in the period by outcome.
+        filters:
+          period: audit.dag_runs.start_date
+        visualization:
+          graph.dimensions: [dag_id, state]
+          graph.metrics: [runs]
+          stackable.stack_type: stacked
+          graph.x_axis.title_text: ""
+          graph.y_axis.title_text: Runs
+        explain:
+          intent: Which pipelines fail, and how often?
+
+      - name: Average run duration
+        sql: health/run_duration_daily.sql
+        display: line
+        position: [9, 0, 24, 5]
+        description: Average duration of successful runs per DAG and day, in minutes.
+        filters:
+          period: audit.dag_runs.start_date
+        visualization:
+          graph.dimensions: [day, dag_id]
+          graph.metrics: [avg_minutes]
+          graph.x_axis.title_text: ""
+          graph.y_axis.title_text: Minutes
+        explain:
+          intent: Are pipelines getting slower (a sign of growing data or a regression)?
+
+  - heading: Loads and data quality
+    position: [14, 0, 24, 1]
+    cards:
+      - name: Rows loaded per day
+        sql: health/rows_loaded_daily.sql
+        display: bar
+        position: [15, 0, 12, 6]
+        description: Rows loaded into the raw layer per day - database extractions and landing files.
+        filters:
+          period: audit.loads_daily.loaded_on
+        visualization:
+          graph.dimensions: [loaded_on, dataset]
+          graph.metrics: [rows_loaded]
+          stackable.stack_type: stacked
+          graph.x_axis.title_text: ""
+          graph.y_axis.title_text: Rows
+        explain:
+          intent: Did any source deliver unusually little or much data?
+
+      - name: Data-quality results per day
+        sql: health/dq_results_daily.sql
+        display: bar
+        position: [15, 12, 12, 6]
+        description: Outcomes of all data-quality checks per day.
+        filters:
+          period: audit.dq_results.checked_at
+        visualization:
+          graph.dimensions: [day, status]
+          graph.metrics: [checks]
+          stackable.stack_type: stacked
+          graph.x_axis.title_text: ""
+          graph.y_axis.title_text: Checks
+        explain:
+          intent: Is data quality getting better or worse?
+
+      - name: Latest data-quality results
+        sql: health/latest_dq_results.sql
+        display: table
+        position: [21, 0, 24, 7]
+        description: Latest result of every data-quality check, problems first.
+        explain: false
+
+  - heading: Alerts
+    position: [28, 0, 24, 1]
+    cards:
+      - name: Recent alerts
+        sql: health/recent_alerts.sql
+        display: table
+        position: [29, 0, 24, 6]
+        description: Most recent alerts; new ones are also posted to the alert webhook if configured.
+        explain: false
+
+  - heading: Explain this chart - usage
+    position: [35, 0, 24, 1]
+    cards:
+      - name: Explanations requested
+        sql: health/explanations_requested.sql
+        display: scalar
+        position: [36, 0, 6, 3]
+        description: Requests to the "Explain this chart" service.
+        filters:
+          period: insight.requests.requested_at
+        explain:
+          intent: Do people use the explanations?
+
+      - name: Explanation cache hit rate
+        sql: health/explain_cache_hit_rate.sql
+        display: scalar
+        position: [36, 6, 6, 3]
+        description: Share of requests answered from the cache (no model call, under a second).
+        filters:
+          period: insight.requests.requested_at
+        columns:
+          cache_hit_rate: {number_style: percent, decimals: 1}
+        explain:
+          intent: How much do we save through caching?
+
+      - name: Explanations with verified numbers
+        sql: health/explain_verified_share.sql
+        display: scalar
+        position: [36, 12, 6, 3]
+        description: Share of AI-written explanations in which every number matched the data.
+        filters:
+          period: insight.explanations.created_at
+        columns:
+          verified_share: {number_style: percent, decimals: 1}
+        explain:
+          intent: Can people trust the numbers in the explanations?
+          target: {value: 0.95, label: quality target}
+
+      - name: Explanations rated helpful
+        sql: health/explain_helpful_share.sql
+        display: scalar
+        position: [36, 18, 6, 3]
+        description: Share of thumbs-up among the feedback on explanations.
+        filters:
+          period: insight.feedback.created_at
+        columns:
+          helpful_share: {number_style: percent, decimals: 1}
+        explain:
+          intent: Do people find the explanations useful?
+
+      - name: Explanation requests per day
+        sql: health/explain_requests_daily.sql
+        display: bar
+        position: [39, 0, 12, 5]
+        description: Requests per day, answered from cache or newly generated.
+        filters:
+          period: insight.requests.requested_at
+        visualization:
+          graph.dimensions: [day, source]
+          graph.metrics: [requests]
+          stackable.stack_type: stacked
+          graph.x_axis.title_text: ""
+          graph.y_axis.title_text: Requests
+        explain:
+          intent: How is usage developing?
+
+      - name: LLM tokens per day
+        sql: health/explain_tokens_daily.sql
+        display: bar
+        position: [39, 12, 12, 5]
+        description: Prompt and completion tokens used for newly generated explanations.
+        filters:
+          period: insight.explanations.created_at
+        visualization:
+          graph.dimensions: [day]
+          graph.metrics: [prompt_tokens, completion_tokens]
+          stackable.stack_type: stacked
+          graph.x_axis.title_text: ""
+          graph.y_axis.title_text: Tokens
+        explain:
+          intent: What does the explain feature cost?
