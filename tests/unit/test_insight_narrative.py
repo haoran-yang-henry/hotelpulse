@@ -66,6 +66,14 @@ def test_context_numbers_are_allowed():
     assert narrative.unverified_numbers(["Coverage is below 60%."], sheet(), ctx) == []
 
 
+def test_numbers_in_category_labels_are_allowed():
+    s = sheet()
+    s.labels = {"70-80 %", "90 % and above"}
+    text = ["Complaints peak at 90% occupancy and above, double the 70-80% band."]
+    assert narrative.unverified_numbers(text, s) == []
+    assert narrative.unverified_numbers(["Complaints peak above 95%."], s) == ["95%"]
+
+
 class FakeClient:
     model = "fake-model"
 
@@ -108,6 +116,16 @@ def test_generate_flags_numbers_after_second_failure():
     bad = {**GOOD, "headline": "Mobile payments collapsed to 12%."}
     result = narrative.generate(sheet(), {}, "en", FakeClient([bad, bad]))
     assert not result.verified and result.unverified == ["12%"]
+
+
+def test_generate_retries_once_on_malformed_json():
+    malformed = {**GOOD, "observations": [{",": ","}]}
+    client = FakeClient([malformed, GOOD])
+    result = narrative.generate(sheet(), {}, "en", client)
+    assert result.mode == "llm" and result.verified and result.attempts == 2
+    assert "JSON format" in client.calls[1][-1]["content"]
+    twice = narrative.generate(sheet(), {}, "en", FakeClient([malformed, malformed]))
+    assert twice.mode == "template" and twice.attempts == 2
 
 
 def test_template_without_model_or_on_failure():

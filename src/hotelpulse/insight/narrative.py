@@ -8,6 +8,7 @@ retry with the offending numbers listed, after which unverified numbers are flag
 import json
 import logging
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -174,10 +175,12 @@ def allowed_bare_numbers(sheet: FactSheet) -> set[float]:
     return allowed
 
 
-def context_numbers(context: dict[str, Any]) -> list[Number]:
-    """Numbers stated in the chart description, intent, filters or glossary may be repeated."""
+def context_numbers(context: dict[str, Any], labels: Iterable[str] = ()) -> list[Number]:
+    """Numbers stated in the chart description, intent, filters, glossary or in category labels
+    ("70-80 %") may be repeated."""
     texts = [str(context.get(k, "")) for k in ("description", "intent", "filters")]
     texts += [str(v) for v in context.get("glossary", {}).values()]
+    texts += list(labels)
     numbers = []
     for text in texts:
         for token in extract_numbers(text):
@@ -191,7 +194,7 @@ def context_numbers(context: dict[str, Any]) -> list[Number]:
 def unverified_numbers(
     texts: list[str], sheet: FactSheet, context: dict[str, Any] | None = None
 ) -> list[str]:
-    facts: list[Number] = sheet.numbers() + context_numbers(context or {})
+    facts: list[Number] = sheet.numbers() + context_numbers(context or {}, sheet.labels)
     bare = allowed_bare_numbers(sheet)
     compatible = {"%": {"%", "pp"}, "pp": {"pp", "%"}, "€": {"€"}, "": {"%", "pp", "€", ""}}
     bad: list[str] = []
@@ -281,7 +284,23 @@ def generate(
             result.attempts = attempt
             result.prompt_tokens += completion.prompt_tokens
             result.completion_tokens += completion.completion_tokens
-            narrative = parse_narrative(completion.content)
+            try:
+                narrative = parse_narrative(completion.content)
+            except (ValidationError, ValueError) as exc:
+                if attempt == 2:
+                    raise
+                log.info("Attempt %d: reply is not the requested JSON - retrying", attempt)
+                problem = str(exc).splitlines()[0][:200]
+                messages = [
+                    *messages,
+                    {"role": "assistant", "content": completion.content},
+                    {
+                        "role": "user",
+                        "content": f"That reply does not match the required JSON format "
+                        f"({problem}). Reply with the corrected JSON object only.",
+                    },
+                ]
+                continue
             bad = unverified_numbers(narrative.texts(), sheet, context)
             result.narrative, result.unverified, result.verified = narrative, bad, not bad
             if not bad:

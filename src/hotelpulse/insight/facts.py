@@ -49,6 +49,7 @@ class FactSheet:
     facts: list[Fact]
     dates: set[date]
     notes: list[str] = field(default_factory=list)
+    labels: set[str] = field(default_factory=set)  # categories/series, e.g. "70-80 %"
 
     def numbers(self) -> list[Number]:
         return [n for f in self.facts for n in f.numbers]
@@ -125,6 +126,11 @@ class Column:
     style: str  # percent | currency | number
 
 
+def humanize(name: str) -> str:
+    """Native-query columns come back as snake_case names: conversion_rate -> Conversion rate."""
+    return name.replace("_", " ").capitalize() if "_" in name and " " not in name else name
+
+
 def read_columns(cols: list[dict], viz: dict) -> list[Column]:
     settings = viz.get("column_settings", {})
     series = viz.get("series_settings", {})
@@ -147,7 +153,11 @@ def read_columns(cols: list[dict], viz: dict) -> list[Column]:
                 if kind == "number" and any(h in c["name"] for h in PERCENT_HINTS)
                 else "number"
             )
-        title = series.get(c["name"], {}).get("title") or c.get("display_name") or c["name"]
+        title = (
+            series.get(c["name"], {}).get("title")
+            or cs.get("column_title")
+            or humanize(c.get("display_name") or c["name"])
+        )
         out.append(Column(i, c["name"], title, kind, style))
     return out
 
@@ -338,6 +348,7 @@ class Analysis:
         self.title, self.display, self.spec = title, display, spec
         self.facts: list[Fact] = []
         self.dates: set[date] = set()
+        self.labels: set[str] = set()
 
     def add(self, kind: str, text: str, f: Fmt, score: float, **meta: Any) -> None:
         self.facts.append(Fact(kind, text, list(f.numbers), score, meta))
@@ -346,7 +357,7 @@ class Analysis:
         ranked = sorted(self.facts, key=lambda x: -x.score)[:MAX_FACTS]
         for i, fact in enumerate(ranked, start=1):
             fact.id = f"F{i}"
-        return FactSheet(self.title, self.display, ranked, self.dates)
+        return FactSheet(self.title, self.display, ranked, self.dates, labels=self.labels)
 
     # ---------------------------------------------------------------- scalar
     def scalar(self, col: Column, value: float | None) -> None:
@@ -644,14 +655,17 @@ class Analysis:
         )
         if not pairs:
             return
+        self.labels.update(lab for lab, _ in pairs)
         style = metric.style
         f = Fmt()
         top = ", ".join(f"{lab} {f.val(v, style)}" for lab, v in pairs[:3])
-        self.add("ranking", f"{metric.title} - highest: {top}.", f, 2.4)
+        self.add("ranking", f"{metric.title} - highest: {top}.", f, 2.4, series=pairs[0][0], rank=1)
         if len(pairs) > 3:
             f = Fmt()
             low = ", ".join(f"{lab} {f.val(v, style)}" for lab, v in pairs[-2:])
-            self.add("ranking", f"{metric.title} - lowest: {low}.", f, 1.4)
+            self.add(
+                "ranking", f"{metric.title} - lowest: {low}.", f, 1.4, series=pairs[-1][0], rank=-1
+            )
         if additive:
             total = sum(v for _, v in pairs)
             if total:
